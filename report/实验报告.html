@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>中医声诊三分类实验报告</title>
+<style>
+body{font-family:"Microsoft YaHei","SimHei",sans-serif;max-width:1000px;margin:24px auto;padding:0 20px;line-height:1.7;color:#222;}
+h1{border-bottom:3px solid #3182bd;padding-bottom:8px;}
+h2{border-bottom:1px solid #ccc;padding-bottom:4px;margin-top:32px;color:#1a4a73;}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px;}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:center;}
+th{background:#eef3f8;}
+img{max-width:100%;border:1px solid #eee;margin:8px 0;}
+code{background:#f4f4f4;padding:1px 5px;border-radius:3px;}
+pre{background:#f4f4f4;padding:10px;border-radius:5px;overflow-x:auto;}
+blockquote{border-left:4px solid #3182bd;margin:12px 0;padding:4px 16px;color:#555;background:#f7fafc;}
+</style>
+</head>
+<body>
+<h1>中医声诊样本风险三分类实验报告</h1>
+<blockquote>
+<p>生成日期：2026-09-24。本报告全部指标来自真实运行（嵌套交叉验证外层折外预测）。</p>
+</blockquote>
+<h2>1 摘要</h2>
+<p>在当前 27 条样本、外层 5 折内层 3 折嵌套 CV 方案下，按<strong>预先固定</strong>的 macro-F1 规则，胜者为 <strong>Random Forest (随机森林)</strong>（OOF macro-F1=0.5386、Accuracy=0.5556）。</p>
+<p>但必须同时说明三点：</p>
+<ol>
+<li><strong>它只在部分指标上胜出。</strong> macro ROC-AUC 与 mAP 最好的调参模型分别是 XGBoost（AUC=0.6584）与 XGBoost（mAP=0.5425），不能说随机森林在所有指标上都最优。</li>
+<li><strong>胜者的分数含事后挑选的乐观性。</strong> 它是在同一批折外预测上挑出的最高分；各模型的嵌套评估不能自动成为「获胜模型选择过程」的无偏估计。（报告 §4.11 另给出一个不含事后挑选的内层选择策略结果作为对照，但那是<strong>另一套策略</strong>的表现，两者之差不可解释为偏差大小。）</li>
+<li><strong>逐类看，最要紧的问题是高危类几乎识别不出</strong>（召回率见 §4.8）。整体 Accuracy 主要由低危与中危两类支撑。</li>
+</ol>
+<p>调参对个别模型有提升（如随机森林、XGBoost），对部分模型反而下降，反映出小样本下内层选择噪声大。受样本量限制，所有模型 OOF 指标波动较大，不能据此声称临床部署有效或外部人群泛化良好。</p>
+<h2>2 数据与实验设置</h2>
+<ul>
+<li>输入附件：<code>inputs/声诊练习.xlsx</code>（27 条有效样本 × 10 个数值特征）、<code>inputs/中医声诊实验.docx</code>（实验背景参考）。</li>
+<li>特征列（表头原样保留，<code>FO</code> 为字母 O，未改作 <code>F0</code>）：FO, I, F1, F2, F3, F4, B1, B2, B3, B4。</li>
+<li>类别映射（固定）：低危=0，中危=1，高危=2；三类各 9 条。</li>
+<li>切分：外层 5 折、内层 3 折分层嵌套交叉验证，<code>StratifiedKFold(shuffle=True, random_state=42)</code>；所有模型共享同一组外层索引。</li>
+<li>调参：内层主评分固定 macro-F1；LR/SVM/GNB/KNN 用 GridSearchCV，RF/XGBoost 用 RandomizedSearchCV（每折 ≤ 20 候选）；所有拟合型预处理均位于 Pipeline 内、只在训练折内拟合。</li>
+<li>指标：Accuracy、macro/weighted/逐类 Precision、Recall、F1、OvR ROC-AUC（逐类+macro）、mAP（逐类 AP 算术平均）、macro PR-AUC（PR 曲线梯形积分，与 AP 算法不同）。</li>
+<li>补充：种子 43、44 各完整重复嵌套流程，考察切分稳定性；主结果仍用 42。</li>
+</ul>
+<p><img alt="类别样本数" src="../results/figures/class_counts.png" /></p>
+<p>原始附件 SHA-256（确认未修改）：
+- <code>inputs/声诊练习.xlsx</code>：<code>34355839cf5ca5945600f348dafc4ba2e4608f5a989815335c4b32ec2b7cbf26</code>
+- <code>inputs/中医声诊实验.docx</code>：<code>44080bc706df51d66e1211bc5d85a48970ab777e9169bcd58dd6d758472518f3</code></p>
+<h2>3 环境核验</h2>
+<ul>
+<li>操作系统 / 架构：Windows-11-10.0.26200-SP0 / AMD64</li>
+<li>解释器：3.14.7，路径 <code>C:\Users\swild\Documents\中医声诊项目_最终交付\.venv\Scripts\python.exe</code></li>
+<li><code>python -m pip check</code>：No broken requirements found.</li>
+<li>关键包版本：</li>
+<li>matplotlib==3.11.2</li>
+<li>numpy==2.5.3</li>
+<li>pandas==3.0.6</li>
+<li>scikit-learn==1.9.1</li>
+<li>scipy==1.18.1</li>
+<li>seaborn==0.13.2</li>
+<li>shap==0.52.0</li>
+<li>xgboost==3.4.1</li>
+</ul>
+<h2>4 结果</h2>
+<h3>4.1 OOF 汇总指标（27 条折外预测，种子 42）</h3>
+<p>下表为从 OOF 预测重新计算的完整汇总值（区别于逐折均值的平均）。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>版本</th>
+<th>accuracy</th>
+<th>precision_macro</th>
+<th>recall_macro</th>
+<th>f1_macro</th>
+<th>roc_auc_macro</th>
+<th>mAP</th>
+<th>pr_auc_macro</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Logistic Regression (逻辑回归)</td>
+<td>未调参</td>
+<td>0.370</td>
+<td>0.386</td>
+<td>0.370</td>
+<td>0.377</td>
+<td>0.512</td>
+<td>0.429</td>
+<td>0.391</td>
+</tr>
+<tr>
+<td>Logistic Regression (逻辑回归)</td>
+<td>调参</td>
+<td>0.296</td>
+<td>0.329</td>
+<td>0.296</td>
+<td>0.309</td>
+<td>0.457</td>
+<td>0.361</td>
+<td>0.321</td>
+</tr>
+<tr>
+<td>SVM (支持向量机)</td>
+<td>未调参</td>
+<td>0.481</td>
+<td>0.463</td>
+<td>0.481</td>
+<td>0.466</td>
+<td>0.626</td>
+<td>0.475</td>
+<td>0.434</td>
+</tr>
+<tr>
+<td>SVM (支持向量机)</td>
+<td>调参</td>
+<td>0.407</td>
+<td>0.344</td>
+<td>0.407</td>
+<td>0.365</td>
+<td>0.537</td>
+<td>0.468</td>
+<td>0.443</td>
+</tr>
+<tr>
+<td>Gaussian Naive Bayes (高斯朴素贝叶斯)</td>
+<td>未调参</td>
+<td>0.519</td>
+<td>0.524</td>
+<td>0.519</td>
+<td>0.518</td>
+<td>0.603</td>
+<td>0.514</td>
+<td>0.483</td>
+</tr>
+<tr>
+<td>Gaussian Naive Bayes (高斯朴素贝叶斯)</td>
+<td>调参</td>
+<td>0.481</td>
+<td>0.482</td>
+<td>0.481</td>
+<td>0.481</td>
+<td>0.586</td>
+<td>0.501</td>
+<td>0.470</td>
+</tr>
+<tr>
+<td>KNN (K 近邻)</td>
+<td>未调参</td>
+<td>0.444</td>
+<td>0.310</td>
+<td>0.444</td>
+<td>0.364</td>
+<td>0.621</td>
+<td>0.437</td>
+<td>0.383</td>
+</tr>
+<tr>
+<td>KNN (K 近邻)</td>
+<td>调参</td>
+<td>0.370</td>
+<td>0.277</td>
+<td>0.370</td>
+<td>0.316</td>
+<td>0.551</td>
+<td>0.423</td>
+<td>0.407</td>
+</tr>
+<tr>
+<td>Random Forest (随机森林)</td>
+<td>未调参</td>
+<td>0.481</td>
+<td>0.402</td>
+<td>0.481</td>
+<td>0.433</td>
+<td>0.626</td>
+<td>0.540</td>
+<td>0.506</td>
+</tr>
+<tr>
+<td>Random Forest (随机森林)</td>
+<td>调参</td>
+<td>0.556</td>
+<td>0.537</td>
+<td>0.556</td>
+<td>0.539</td>
+<td>0.588</td>
+<td>0.521</td>
+<td>0.495</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>未调参</td>
+<td>0.444</td>
+<td>0.482</td>
+<td>0.444</td>
+<td>0.458</td>
+<td>0.593</td>
+<td>0.481</td>
+<td>0.448</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>调参</td>
+<td>0.481</td>
+<td>0.491</td>
+<td>0.481</td>
+<td>0.479</td>
+<td>0.658</td>
+<td>0.543</td>
+<td>0.507</td>
+</tr>
+<tr>
+<td>Dummy (先验基线)</td>
+<td>基线</td>
+<td>0.259</td>
+<td>0.231</td>
+<td>0.259</td>
+<td>0.223</td>
+<td>0.420</td>
+<td>0.301</td>
+<td>0.316</td>
+</tr>
+</tbody>
+</table>
+<p><em>注：SVM 的 ROC/PR 使用 decision_function 决策分数（非概率、未做校准），不参与概率行和≈1 的检查；其余模型为 predict_proba 概率。</em></p>
+<p><img alt="模型指标对比" src="../results/figures/model_metrics.png" /></p>
+<h3>4.2 逐折指标（均值 ± 标准差，跨 5 个外层折）</h3>
+<p>标准差是跨折变动，不是置信区间。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>版本</th>
+<th>accuracy</th>
+<th>precision_macro</th>
+<th>recall_macro</th>
+<th>f1_macro</th>
+<th>roc_auc_macro</th>
+<th>mAP</th>
+<th>pr_auc_macro</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dummy 基线</td>
+<td>基线</td>
+<td>0.253±0.065</td>
+<td>0.084±0.022</td>
+<td>0.333±0.000</td>
+<td>0.133±0.027</td>
+<td>0.500±0.000</td>
+<td>0.333±0.000</td>
+<td>0.667±0.000</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>调参</td>
+<td>0.480±0.129</td>
+<td>0.478±0.188</td>
+<td>0.500±0.149</td>
+<td>0.453±0.118</td>
+<td>0.622±0.116</td>
+<td>0.601±0.105</td>
+<td>0.491±0.148</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>未调参</td>
+<td>0.520±0.181</td>
+<td>0.511±0.266</td>
+<td>0.533±0.194</td>
+<td>0.487±0.199</td>
+<td>0.650±0.142</td>
+<td>0.621±0.126</td>
+<td>0.513±0.165</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>调参</td>
+<td>0.373±0.131</td>
+<td>0.283±0.067</td>
+<td>0.367±0.163</td>
+<td>0.304±0.094</td>
+<td>0.558±0.140</td>
+<td>0.492±0.136</td>
+<td>0.519±0.094</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>未调参</td>
+<td>0.447±0.202</td>
+<td>0.283±0.156</td>
+<td>0.400±0.170</td>
+<td>0.324±0.161</td>
+<td>0.632±0.119</td>
+<td>0.522±0.100</td>
+<td>0.540±0.163</td>
+</tr>
+<tr>
+<td>逻辑回归</td>
+<td>调参</td>
+<td>0.293±0.183</td>
+<td>0.311±0.213</td>
+<td>0.300±0.194</td>
+<td>0.287±0.183</td>
+<td>0.464±0.122</td>
+<td>0.521±0.120</td>
+<td>0.416±0.159</td>
+</tr>
+<tr>
+<td>逻辑回归</td>
+<td>未调参</td>
+<td>0.380±0.139</td>
+<td>0.344±0.142</td>
+<td>0.367±0.125</td>
+<td>0.333±0.110</td>
+<td>0.481±0.126</td>
+<td>0.544±0.113</td>
+<td>0.447±0.148</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>调参</td>
+<td>0.560±0.049</td>
+<td>0.504±0.076</td>
+<td>0.533±0.067</td>
+<td>0.483±0.037</td>
+<td>0.592±0.092</td>
+<td>0.603±0.085</td>
+<td>0.506±0.128</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>未调参</td>
+<td>0.480±0.147</td>
+<td>0.438±0.075</td>
+<td>0.467±0.163</td>
+<td>0.416±0.101</td>
+<td>0.611±0.166</td>
+<td>0.626±0.135</td>
+<td>0.548±0.177</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>调参</td>
+<td>0.407±0.053</td>
+<td>0.306±0.096</td>
+<td>0.400±0.082</td>
+<td>0.329±0.077</td>
+<td>0.511±0.141</td>
+<td>0.542±0.071</td>
+<td>0.434±0.054</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>未调参</td>
+<td>0.473±0.104</td>
+<td>0.427±0.224</td>
+<td>0.467±0.125</td>
+<td>0.405±0.147</td>
+<td>0.622±0.119</td>
+<td>0.608±0.118</td>
+<td>0.503±0.166</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>调参</td>
+<td>0.473±0.164</td>
+<td>0.467±0.143</td>
+<td>0.433±0.170</td>
+<td>0.427±0.145</td>
+<td>0.642±0.148</td>
+<td>0.643±0.115</td>
+<td>0.560±0.128</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>未调参</td>
+<td>0.440±0.116</td>
+<td>0.439±0.143</td>
+<td>0.433±0.133</td>
+<td>0.416±0.132</td>
+<td>0.567±0.190</td>
+<td>0.576±0.129</td>
+<td>0.469±0.148</td>
+</tr>
+</tbody>
+</table>
+<h3>4.3 调参搜索预算</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>搜索类型</th>
+<th>空间大小</th>
+<th>每折候选</th>
+<th>每折拟合数</th>
+<th>调参总拟合数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>逻辑回归</td>
+<td>grid</td>
+<td>5</td>
+<td>5</td>
+<td>15</td>
+<td>75</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>grid</td>
+<td>20</td>
+<td>20</td>
+<td>60</td>
+<td>300</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>grid</td>
+<td>5</td>
+<td>5</td>
+<td>15</td>
+<td>75</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>grid</td>
+<td>16</td>
+<td>16</td>
+<td>48</td>
+<td>240</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>random</td>
+<td>48</td>
+<td>20</td>
+<td>60</td>
+<td>300</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>random</td>
+<td>144</td>
+<td>20</td>
+<td>60</td>
+<td>300</td>
+</tr>
+</tbody>
+</table>
+<h3>4.4 调参前后对比</h3>
+<ul>
+<li>逻辑回归：macro-F1 0.377 → 0.309（下降 -0.069）。</li>
+<li>SVM：macro-F1 0.466 → 0.365（下降 -0.101）。</li>
+<li>高斯朴素贝叶斯：macro-F1 0.518 → 0.481（下降 -0.037）。</li>
+<li>KNN：macro-F1 0.364 → 0.316（下降 -0.048）。</li>
+<li>随机森林：macro-F1 0.433 → 0.539（提升 +0.105）。</li>
+<li>XGBoost：macro-F1 0.458 → 0.479（提升 +0.021）。</li>
+</ul>
+<p>各模型外层折最优超参数（取多数出现或逐折记录见 <code>results/seed42/folds.csv</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>最优参数（多数）</th>
+<th>出现折数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>逻辑回归</td>
+<td>{'C': 10.0}</td>
+<td>2/5</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>{'C': 10.0, 'gamma': 'scale', 'kernel': 'rbf'}</td>
+<td>4/5</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>{'var_smoothing': 0.001}</td>
+<td>4/5</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>{'n_neighbors': 3, 'p': 1, 'weights': 'uniform'}</td>
+<td>2/5</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>{'max_depth': 2, 'max_features': 1.0, 'min_samples_leaf': 1, 'n_estimators': 100}</td>
+<td>1/5</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>{'colsample_bytree': 1.0, 'learning_rate': 0.03, 'max_depth': 1, 'n_estimators': 50, 'reg_lambda': 1.0, 'subsample': 1.0}</td>
+<td>2/5</td>
+</tr>
+</tbody>
+</table>
+<h3>4.5 训练分数与外层分数差距（过拟合观察）</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>版本</th>
+<th>train_f1_macro</th>
+<th>train_accuracy</th>
+<th>oof_f1_macro</th>
+<th>oof_accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>逻辑回归</td>
+<td>未调参</td>
+<td>0.741</td>
+<td>0.750</td>
+<td>0.377</td>
+<td>0.370</td>
+</tr>
+<tr>
+<td>逻辑回归</td>
+<td>调参</td>
+<td>0.677</td>
+<td>0.710</td>
+<td>0.309</td>
+<td>0.296</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>未调参</td>
+<td>0.914</td>
+<td>0.916</td>
+<td>0.466</td>
+<td>0.481</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>调参</td>
+<td>0.919</td>
+<td>0.933</td>
+<td>0.365</td>
+<td>0.407</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>未调参</td>
+<td>0.838</td>
+<td>0.842</td>
+<td>0.518</td>
+<td>0.519</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>调参</td>
+<td>0.765</td>
+<td>0.777</td>
+<td>0.481</td>
+<td>0.481</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>未调参</td>
+<td>0.491</td>
+<td>0.584</td>
+<td>0.364</td>
+<td>0.444</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>调参</td>
+<td>0.755</td>
+<td>0.794</td>
+<td>0.316</td>
+<td>0.370</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>未调参</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.433</td>
+<td>0.481</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>调参</td>
+<td>0.972</td>
+<td>0.972</td>
+<td>0.539</td>
+<td>0.556</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>未调参</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.458</td>
+<td>0.444</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>调参</td>
+<td>0.924</td>
+<td>0.927</td>
+<td>0.479</td>
+<td>0.481</td>
+</tr>
+</tbody>
+</table>
+<h3>4.6 六模型曲线对比（OOF 分数）</h3>
+<p><img alt="六模型 macro ROC 对比" src="../results/figures/macro_roc.png" /></p>
+<p><img alt="六模型 macro PR 对比" src="../results/figures/macro_pr.png" /></p>
+<p><em>读图口径（四点，容易误读）：</em></p>
+<ol>
+<li>图例中的 macro-AUC 来自<strong>逐类 ROC-AUC 算术平均</strong>、mAP 来自<strong>逐类 AP 算术平均</strong>，两者都<strong>不是</strong>平均曲线本身的面积，不要互相替代。</li>
+<li>macro PR 曲线按「<strong>相同召回率取最大精确率</strong>」去重后再线性插值到公共 recall 网格。该做法会消除垂直段、使曲线偏高，因此平均曲线下方的面积<strong>大于</strong> mAP 与梯形 PR-AUC（三者算法不同：mAP=逐类 AP 平均、pr_auc_macro=逐类梯形积分、此图=插值后平均曲线）。把这里的 max 直接改成 min 也不是通用正确修复；换展示口径需另行说明。</li>
+<li>曲线由<strong>跨折拼接</strong>的 OOF 分数绘制。Dummy 每折 AUC≈0.5，但拼接后约 0.42，这是不同训练折先验分数之间的排序效应，<strong>不应</strong>把该曲线当作理论随机基线，也不代表 AUC 实现有误。</li>
+<li>SVM 的分数是 decision_function 决策分数，跨折可能存在尺度差异，故同时保留逐折指标。</li>
+</ol>
+<h3>4.7 逐类 ROC / PR 曲线</h3>
+<p><img alt="Logistic Regression (逻辑回归) 逐类 ROC/PR" src="../results/figures/per_class_logistic.png" /></p>
+<p><img alt="SVM (支持向量机) 逐类 ROC/PR" src="../results/figures/per_class_svm.png" /></p>
+<p><img alt="Gaussian Naive Bayes (高斯朴素贝叶斯) 逐类 ROC/PR" src="../results/figures/per_class_gnb.png" /></p>
+<p><img alt="KNN (K 近邻) 逐类 ROC/PR" src="../results/figures/per_class_knn.png" /></p>
+<p><img alt="Random Forest (随机森林) 逐类 ROC/PR" src="../results/figures/per_class_random_forest.png" /></p>
+<p><img alt="XGBoost 逐类 ROC/PR" src="../results/figures/per_class_xgboost.png" /></p>
+<h3>4.8 混淆矩阵</h3>
+<p>按预先确定的 macro-F1，胜者为 <strong>Random Forest (随机森林)</strong>（OOF macro-F1=0.539，Accuracy=0.556）。单独标记的 Accuracy 最高模型为 <strong>Random Forest (随机森林)</strong>（Accuracy=0.556）。</p>
+<p>按真实类别拆开看，胜者的逐类召回率为：低危 <strong>77.8%</strong>（7/9）、中危 <strong>66.7%</strong>（6/9）、高危 <strong>仅 22.2%</strong>（2/9）。</p>
+<p>也就是说，7 条真实高危样本没有被识别为高危。在三分类风险预警里，这比「哪个模型是冠军」重要得多：<strong>模型对最需要预警的类别几乎失效</strong>，高分主要来自低危与中危两类。任何关于本实验「可用性」的表述都必须先说明这一点。（这里评价的是给定标签下的实验表现，不推断真实疾病结局。）</p>
+<p><img alt="Random Forest (随机森林) 混淆矩阵（计数，合计 27）" src="../results/figures/cm_random_forest_count.png" /></p>
+<p><img alt="Random Forest (随机森林) 混淆矩阵（行归一化）" src="../results/figures/cm_random_forest_norm.png" /></p>
+<h3>4.9 SHAP 特征重要性（训练后描述性分析）</h3>
+<ul>
+<li>解释对象：最终所选模型（Random Forest (随机森林)）。</li>
+<li>解释器：TreeExplainer(tree_path_dependent)；背景：原始特征空间（树模型无缩放；imputer 恒等，已验证）；解释对象：全部 27 条训练样本；输出空间：predict_proba 概率。</li>
+<li>说明：训练后描述性分析，非外部验证，非因果关系证据；解释空间见 background 字段。</li>
+</ul>
+<p><img alt="SHAP 特征重要性" src="../results/figures/shap.png" /></p>
+<p>三类聚合 mean(|SHAP|) 排名：</p>
+<p>| 特征 | mean(|SHAP|) | 排名 |
+| --- | --- | --- |
+| F1 | 0.10359078358334227 | 1 |
+| I | 0.09559818569032741 | 2 |
+| F4 | 0.04475548577096555 | 3 |
+| F2 | 0.03062599877420821 | 4 |
+| FO | 0.027818790059675774 | 5 |
+| B4 | 0.021159416730440878 | 6 |
+| B1 | 0.01720575327004047 | 7 |
+| F3 | 0.01670556060836223 | 8 |
+| B3 | 0.01567856617974038 | 9 |
+| B2 | 0.009117741566374795 | 10 |</p>
+<h3>4.10 切分稳定性（种子 43、44 补充）</h3>
+<p>以下为各模型（调参版）在三个种子下的 OOF 指标，用于观察表现对切分的敏感性。重复切分不是新增独立样本，不能把 81 次预测当作 81 名患者来缩小置信区间。</p>
+<table>
+<thead>
+<tr>
+<th>种子</th>
+<th>模型</th>
+<th>accuracy</th>
+<th>f1_macro</th>
+<th>roc_auc_macro</th>
+<th>mAP</th>
+<th>pr_auc_macro</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>42</td>
+<td>逻辑回归</td>
+<td>0.296</td>
+<td>0.309</td>
+<td>0.457</td>
+<td>0.361</td>
+<td>0.321</td>
+</tr>
+<tr>
+<td>42</td>
+<td>SVM</td>
+<td>0.407</td>
+<td>0.365</td>
+<td>0.537</td>
+<td>0.468</td>
+<td>0.443</td>
+</tr>
+<tr>
+<td>42</td>
+<td>高斯朴素贝叶斯</td>
+<td>0.481</td>
+<td>0.481</td>
+<td>0.586</td>
+<td>0.501</td>
+<td>0.470</td>
+</tr>
+<tr>
+<td>42</td>
+<td>KNN</td>
+<td>0.370</td>
+<td>0.316</td>
+<td>0.551</td>
+<td>0.423</td>
+<td>0.407</td>
+</tr>
+<tr>
+<td>42</td>
+<td>随机森林</td>
+<td>0.556</td>
+<td>0.539</td>
+<td>0.588</td>
+<td>0.521</td>
+<td>0.495</td>
+</tr>
+<tr>
+<td>42</td>
+<td>XGBoost</td>
+<td>0.481</td>
+<td>0.479</td>
+<td>0.658</td>
+<td>0.543</td>
+<td>0.507</td>
+</tr>
+<tr>
+<td>43</td>
+<td>逻辑回归</td>
+<td>0.222</td>
+<td>0.228</td>
+<td>0.412</td>
+<td>0.326</td>
+<td>0.290</td>
+</tr>
+<tr>
+<td>43</td>
+<td>SVM</td>
+<td>0.333</td>
+<td>0.308</td>
+<td>0.484</td>
+<td>0.373</td>
+<td>0.329</td>
+</tr>
+<tr>
+<td>43</td>
+<td>高斯朴素贝叶斯</td>
+<td>0.296</td>
+<td>0.312</td>
+<td>0.484</td>
+<td>0.417</td>
+<td>0.380</td>
+</tr>
+<tr>
+<td>43</td>
+<td>KNN</td>
+<td>0.481</td>
+<td>0.412</td>
+<td>0.605</td>
+<td>0.435</td>
+<td>0.453</td>
+</tr>
+<tr>
+<td>43</td>
+<td>随机森林</td>
+<td>0.370</td>
+<td>0.368</td>
+<td>0.549</td>
+<td>0.466</td>
+<td>0.429</td>
+</tr>
+<tr>
+<td>43</td>
+<td>XGBoost</td>
+<td>0.407</td>
+<td>0.400</td>
+<td>0.586</td>
+<td>0.471</td>
+<td>0.442</td>
+</tr>
+<tr>
+<td>44</td>
+<td>逻辑回归</td>
+<td>0.370</td>
+<td>0.371</td>
+<td>0.521</td>
+<td>0.417</td>
+<td>0.375</td>
+</tr>
+<tr>
+<td>44</td>
+<td>SVM</td>
+<td>0.556</td>
+<td>0.547</td>
+<td>0.695</td>
+<td>0.610</td>
+<td>0.586</td>
+</tr>
+<tr>
+<td>44</td>
+<td>高斯朴素贝叶斯</td>
+<td>0.444</td>
+<td>0.420</td>
+<td>0.556</td>
+<td>0.484</td>
+<td>0.456</td>
+</tr>
+<tr>
+<td>44</td>
+<td>KNN</td>
+<td>0.444</td>
+<td>0.431</td>
+<td>0.582</td>
+<td>0.420</td>
+<td>0.419</td>
+</tr>
+<tr>
+<td>44</td>
+<td>随机森林</td>
+<td>0.444</td>
+<td>0.429</td>
+<td>0.586</td>
+<td>0.530</td>
+<td>0.496</td>
+</tr>
+<tr>
+<td>44</td>
+<td>XGBoost</td>
+<td>0.556</td>
+<td>0.547</td>
+<td>0.630</td>
+<td>0.537</td>
+<td>0.508</td>
+</tr>
+</tbody>
+</table>
+<h3>4.11 不确定性量化与选择乐观性（补充分析）</h3>
+<p>本节为<strong>补充分析</strong>，不改动 §2 预先固定的主实验规则（随机种子、外层/内层切分、内层评分、胜者判定规则全部不变），只对已经算出的折外预测做进一步的统计刻画。</p>
+<p>下表是对 27 条折外预测做<strong>样本级 bootstrap 重采样（2000 次）</strong>得到的百分位区间。它刻画的是「这 27 条样本」内部的抽样波动，<strong>不是</strong>人群抽样分布，也不能把种子 42/43/44 的 81 次重复预测当成 81 名患者。</p>
+<p><strong>有效抽样规则</strong>：一次抽样只有<strong>三类都出现</strong>时才计入；缺任一类则该次对<strong>全部指标</strong>作废（计入「缺类作废数」）。不按剩余类别凑一个 macro 值、也不用 0 顶替——否则 macro 平均的类别数会在各次之间变化。本轮实际未出现缺类抽样（各模型「缺类作废数」均为 0），但规则与代码、测试一致。</p>
+<p><strong>适用范围（重要）</strong>：本区间固定了已经拟合好的折外预测，只重采样行；它<strong>没有</strong>重新执行训练、调参、切分与胜者选择，也未建模交叉验证各折训练集之间的重叠。因此它<strong>不是</strong>「完整建模流程泛化性能」的已证 95% 置信区间。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>指标</th>
+<th>OOF 点估计</th>
+<th>bootstrap 95% 区间</th>
+<th>重采样次数</th>
+<th>有效重采样数</th>
+<th>缺类作废数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>逻辑回归</td>
+<td>accuracy</td>
+<td>0.296</td>
+<td>[0.148, 0.481]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>逻辑回归</td>
+<td>f1_macro</td>
+<td>0.309</td>
+<td>[0.131, 0.470]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>逻辑回归</td>
+<td>roc_auc_macro</td>
+<td>0.457</td>
+<td>[0.329, 0.604]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>逻辑回归</td>
+<td>mAP</td>
+<td>0.361</td>
+<td>[0.310, 0.529]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>accuracy</td>
+<td>0.407</td>
+<td>[0.222, 0.593]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>f1_macro</td>
+<td>0.365</td>
+<td>[0.226, 0.508]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>roc_auc_macro</td>
+<td>0.537</td>
+<td>[0.375, 0.690]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>SVM</td>
+<td>mAP</td>
+<td>0.468</td>
+<td>[0.367, 0.615]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>accuracy</td>
+<td>0.481</td>
+<td>[0.296, 0.667]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>f1_macro</td>
+<td>0.481</td>
+<td>[0.301, 0.646]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>roc_auc_macro</td>
+<td>0.586</td>
+<td>[0.424, 0.755]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>高斯朴素贝叶斯</td>
+<td>mAP</td>
+<td>0.501</td>
+<td>[0.389, 0.700]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>accuracy</td>
+<td>0.370</td>
+<td>[0.185, 0.556]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>f1_macro</td>
+<td>0.316</td>
+<td>[0.177, 0.439]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>roc_auc_macro</td>
+<td>0.551</td>
+<td>[0.409, 0.710]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>KNN</td>
+<td>mAP</td>
+<td>0.423</td>
+<td>[0.345, 0.587]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>accuracy</td>
+<td>0.556</td>
+<td>[0.370, 0.741]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>f1_macro</td>
+<td>0.539</td>
+<td>[0.362, 0.701]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>roc_auc_macro</td>
+<td>0.588</td>
+<td>[0.440, 0.727]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>随机森林</td>
+<td>mAP</td>
+<td>0.521</td>
+<td>[0.409, 0.680]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>accuracy</td>
+<td>0.481</td>
+<td>[0.296, 0.667]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>f1_macro</td>
+<td>0.479</td>
+<td>[0.295, 0.646]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>roc_auc_macro</td>
+<td>0.658</td>
+<td>[0.504, 0.811]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>XGBoost</td>
+<td>mAP</td>
+<td>0.543</td>
+<td>[0.444, 0.730]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Dummy 基线</td>
+<td>accuracy</td>
+<td>0.259</td>
+<td>[0.111, 0.407]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Dummy 基线</td>
+<td>f1_macro</td>
+<td>0.223</td>
+<td>[0.083, 0.363]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Dummy 基线</td>
+<td>roc_auc_macro</td>
+<td>0.420</td>
+<td>[0.313, 0.553]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Dummy 基线</td>
+<td>mAP</td>
+<td>0.301</td>
+<td>[0.294, 0.387]</td>
+<td>2000</td>
+<td>2000</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="OOF 指标 bootstrap 95% 区间" src="../results/figures/uncertainty.png" /></p>
+<p><strong>胜者与先验基线的配对检验</strong></p>
+<p>胜者 <strong>随机森林</strong> 与 Dummy 先验基线使用同一组 27 条折外预测，可作配对比较：两者都判对 3 条、都判错 8 条，胜者判对而基线判错 12 条、反之 4 条。精确 McNemar 双尾 p = <strong>0.0768</strong>，在 0.05 水平下<strong>不显著</strong>：以本样本量尚不能认为胜者优于先验基线。 不一致对仅 16 条，检验功效很低；p 不显著只表示「未观察到显著差异」，不等于「两者相同」。</p>
+<p><strong>局限</strong>：应把本检验视为<strong>探索性比较</strong>。「精确」仅指二项尾概率的算法精确——胜者本身来自同一批折外预测的筛选、各折模型又共享训练数据，因此它不构成对整个「选模流程」的精确检验；且它只比较<strong>错误率</strong>，不涉及 macro-F1、ROC-AUC 或排序质量。不宜把该 p 值当作强证据。</p>
+<p><strong>含模型选择的无事后挑选估计</strong></p>
+<p>这里换一种<strong>不含事后挑选</strong>的做法：每个外层折只按<strong>该折的内层 macro-F1</strong> 决定用哪个模型（折 0→XGBoost、折 1→KNN、折 2→KNN、折 3→XGBoost、折 4→XGBoost），再拼接各折折外预测。结果为 Accuracy=0.481、macro-F1=0.462；作为对照，事后在同一批折外预测上挑出的 <strong>随机森林</strong> 为 Accuracy=0.556、macro-F1=0.539。</p>
+<p><strong>这两个数值不能相减来解释为偏差的大小。</strong> 它们来自<strong>两套不同的选模策略</strong>：前者外层实际用的是 KNN/XGBoost，后者用的是 随机森林。两者之差同时混合了(a)策略不同、(b)有限样本波动、(c)事后挑选的乐观性三种来源，无法单独识别 (c)，更不能当作随机森林经偏差校正后的成绩。</p>
+<p>由此能得到的结论只有一条：<strong>本次结果对「用哪种方式选模型」是敏感的</strong>——内层选择策略在外层评估中表现更差，且各折选出的模型并不固定在随机森林上，说明当前样本量下模型排名本身不稳定。该估计衡量的是「模型选择这个过程」的表现，仍不是独立外部测试集。</p>
+<h2>5 最终模型</h2>
+<p>最终演示模型为 <strong>Random Forest (随机森林)</strong>，在全部 27 条样本上重新做训练内 3 折调参后拟合。
+- 最终超参数：<code>{'n_estimators': 300, 'min_samples_leaf': 1, 'max_features': 1.0, 'max_depth': None}</code>
+- 训练内 CV 最优 macro-F1：0.470
+- 训练集（全 27 条）Accuracy=1.000，macro-F1=1.000（训练集得分不得替代上面的 OOF 性能）。
+- 分数类型：predict_proba 概率。
+- 已保存：<code>models/final_pipeline.joblib</code>（含预处理+模型），<code>models/final_metadata.json</code>（特征顺序与标签映射）。</p>
+<h2>6 结论与限制</h2>
+<p>在当前 27 条样本、外层 5 折内层 3 折嵌套 CV 方案下，按<strong>预先固定</strong>的 macro-F1 规则，胜者为 <strong>Random Forest (随机森林)</strong>（OOF macro-F1=0.5386、Accuracy=0.5556）。</p>
+<p>但必须同时说明三点：</p>
+<ol>
+<li><strong>它只在部分指标上胜出。</strong> macro ROC-AUC 与 mAP 最好的调参模型分别是 XGBoost（AUC=0.6584）与 XGBoost（mAP=0.5425），不能说随机森林在所有指标上都最优。</li>
+<li><strong>胜者的分数含事后挑选的乐观性。</strong> 它是在同一批折外预测上挑出的最高分；各模型的嵌套评估不能自动成为「获胜模型选择过程」的无偏估计。（报告 §4.11 另给出一个不含事后挑选的内层选择策略结果作为对照，但那是<strong>另一套策略</strong>的表现，两者之差不可解释为偏差大小。）</li>
+<li><strong>逐类看，最要紧的问题是高危类几乎识别不出</strong>（召回率见 §4.8）。整体 Accuracy 主要由低危与中危两类支撑。</li>
+</ol>
+<p>调参对个别模型有提升（如随机森林、XGBoost），对部分模型反而下降，反映出小样本下内层选择噪声大。受样本量限制，所有模型 OOF 指标波动较大，不能据此声称临床部署有效或外部人群泛化良好。</p>
+<h3>6.1 关键限制</h3>
+<ul>
+<li>仅 27 条样本（每类 9 条），外层每折仅 5–6 条，OOF 指标方差大、置信范围宽；任何结论都是低统计功效下的初步观察。</li>
+<li>没有患者 ID，无法核实同一人是否存在重复录音跨行；本实验把‘每行独立’作为暂定假设，未声称已排除患者级泄漏。</li>
+<li>标准差是跨折变动，不是置信区间，也不是临床不确定性范围。</li>
+<li>获胜模型得分存在选择乐观性（在多个模型中挑最高分本身会高估该模型）。</li>
+<li>SHAP 为全量训练后描述性分析，不是外部验证解释，也不是因果关系证据。</li>
+<li>样本来源、特征单位与采集协议未提供，结果不可外推到其他人群或设备。</li>
+<li>胜者的 bootstrap 95% 区间很宽：Accuracy [0.370, 0.741]、macro-F1 [0.362, 0.701]，各模型区间大量重叠，不能按点估计大小排出可信的名次。</li>
+<li>胜者相对 Dummy 先验基线的精确 McNemar 检验 p=0.0768（&gt;0.05），以本样本量尚不足以证明「有真实优于基线的判别能力」。</li>
+<li>内层选择策略（每折按内层 macro-F1 选模型）在外层评估中得 Accuracy=0.481、macro-F1=0.462，低于事后挑出的胜者分数。但这是<strong>两套不同策略</strong>的结果，差值同时混合策略差异、有限样本波动与选择效应，<strong>不能解释为选择偏差的大小</strong>，也不是胜者的偏差校正成绩；能说的只是结论对「用哪种方式选模型」敏感。</li>
+<li>bootstrap 区间固定了已经拟合好的折外预测，只对 27 行做样本级重采样；它<strong>没有</strong>重新执行训练、调参、切分与胜者选择，也未建模交叉验证各折训练集之间的重叠。因此不能把它当作「完整建模流程泛化性能」的已证 95% 置信区间。本轮 2000 次重采样中未出现缺类抽样（见 results/uncertainty.csv 的 n_invalid 列），故区间数值未受缺类处理规则影响。</li>
+<li>McNemar 检验的「精确」仅指二项尾概率的算法精确。由于胜者本身来自同一批折外预测的筛选、各折模型又共享训练数据，它不构成对整个选模流程的精确检验；它也比较错误率，不检验 macro-F1、AUC 或排序质量。应按<strong>探索性比较</strong>理解，其 p 值不宜作为强证据。</li>
+</ul>
+<hr />
+<p>报告由 <code>main.py</code> 自动生成；复现命令见 <code>README.md</code>。所有原始附件保持不变。</p>
+</body>
+</html>

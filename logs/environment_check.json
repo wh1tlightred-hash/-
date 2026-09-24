@@ -1,0 +1,17 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "arch": "AMD64",
+  "python": "3.14.7",
+  "executable": "C:\\Users\\swild\\Documents\\中医声诊项目_最终交付\\.venv\\Scripts\\python.exe",
+  "pip_check": "No broken requirements found.",
+  "packages": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "scipy": "1.18.1",
+    "scikit-learn": "1.9.1",
+    "matplotlib": "3.11.2",
+    "seaborn": "0.13.2",
+    "xgboost": "3.4.1",
+    "shap": "0.52.0"
+  }
+}

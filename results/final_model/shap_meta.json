@@ -1,0 +1,9 @@
+{
+  "model": "Random Forest (随机森林)",
+  "explainer": "TreeExplainer(tree_path_dependent)",
+  "background": "原始特征空间（树模型无缩放；imputer 恒等，已验证）",
+  "explained": "全部 27 条训练样本",
+  "output_space": "predict_proba 概率",
+  "preprocessing_is_identity": true,
+  "note": "训练后描述性分析，非外部验证，非因果关系证据；解释空间见 background 字段。"
+}

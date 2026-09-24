@@ -1,0 +1,11 @@
+{
+  "n_both_correct": 3,
+  "n_a_only_correct": 12,
+  "n_b_only_correct": 4,
+  "n_both_wrong": 8,
+  "n_discordant": 16,
+  "p_value": 0.076812744140625,
+  "note": "精确二项检验（双尾）；不一致对很少时检验功效很低，p 不显著只说明「未观察到显著差异」。",
+  "model_a": "random_forest",
+  "model_b": "dummy"
+}

@@ -1,0 +1,9 @@
+.venv/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_tmp/
+.pytest_runs/
+.pytest_cache/
+.mplconfig/
+审查输出/

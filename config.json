@@ -1,0 +1,25 @@
+{
+  "seed": 42,
+  "stability_seeds": [43, 44],
+  "outer_cv": { "n_splits": 5, "shuffle": true },
+  "inner_cv": { "n_splits": 3, "shuffle": true },
+  "inner_scoring": "f1_macro",
+  "max_candidates_per_model": 20,
+  "n_iter_random": 20,
+  "n_jobs": 1,
+  "feature_columns": ["FO", "I", "F1", "F2", "F3", "F4", "B1", "B2", "B3", "B4"],
+  "label_map": { "低危": 0, "中危": 1, "高危": 2 },
+  "class_names": ["低危", "中危", "高危"],
+  "input_xlsx": "inputs/声诊练习.xlsx",
+  "input_docx": "inputs/中医声诊实验.docx",
+  "data_processed_dir": "data/processed",
+  "results_dir": "results",
+  "models_dir": "models",
+  "report_dir": "report",
+  "shap": {
+    "background": "all_train",
+    "nsamples_kernel": 400,
+    "explain_all_train": true
+  },
+  "zero_division": 0
+}

@@ -1,0 +1,8 @@
+{
+  "f1_best": "random_forest",
+  "f1_best_score": 0.5386243386243387,
+  "f1_best_accuracy": 0.5555555555555556,
+  "accuracy_best": "random_forest",
+  "accuracy_best_score": 0.5555555555555556,
+  "tie_break_note": "胜者按 macro-F1 判定；若 random_forest 与 random_forest 不同，则分别给出两者混淆矩阵。并列时依次比较 Accuracy 与简洁性（预先固定顺序）。"
+}

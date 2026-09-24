@@ -1,0 +1,101 @@
+{
+  "model": "random_forest",
+  "model_label": "Random Forest (随机森林)",
+  "best_params": {
+    "n_estimators": 300,
+    "min_samples_leaf": 1,
+    "max_features": 1.0,
+    "max_depth": null
+  },
+  "inner_cv_best_f1_macro": 0.46957671957671954,
+  "train_metrics": {
+    "accuracy": 1.0,
+    "precision_macro": 1.0,
+    "recall_macro": 1.0,
+    "f1_macro": 1.0,
+    "precision_weighted": 1.0,
+    "recall_weighted": 1.0,
+    "f1_weighted": 1.0,
+    "per_class_precision": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "per_class_recall": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "per_class_f1": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "support": [
+      9,
+      9,
+      9
+    ],
+    "roc_auc_ovr": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "roc_auc_macro": 1.0,
+    "ap_ovr": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mAP": 1.0,
+    "pr_auc_ovr": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "pr_auc_macro": 1.0,
+    "confusion_matrix": [
+      [
+        9,
+        0,
+        0
+      ],
+      [
+        0,
+        9,
+        0
+      ],
+      [
+        0,
+        0,
+        9
+      ]
+    ]
+  },
+  "feature_order": [
+    "FO",
+    "I",
+    "F1",
+    "F2",
+    "F3",
+    "F4",
+    "B1",
+    "B2",
+    "B3",
+    "B4"
+  ],
+  "label_map": {
+    "低危": 0,
+    "中危": 1,
+    "高危": 2
+  },
+  "class_names": [
+    "低危",
+    "中危",
+    "高危"
+  ],
+  "score_kind": "probability",
+  "fit_on": "全部 27 条样本",
+  "note": "训练内调参后的最终演示模型；训练集得分不替代 OOF 性能。",
+  "warnings": []
+}

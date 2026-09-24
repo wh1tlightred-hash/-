@@ -1,0 +1,45 @@
+{
+  "picked_per_fold": [
+    {
+      "fold": 0,
+      "model": "xgboost",
+      "best_inner_score": 0.4518518518518519
+    },
+    {
+      "fold": 1,
+      "model": "knn",
+      "best_inner_score": 0.44708994708994715
+    },
+    {
+      "fold": 2,
+      "model": "knn",
+      "best_inner_score": 0.5666666666666667
+    },
+    {
+      "fold": 3,
+      "model": "xgboost",
+      "best_inner_score": 0.6296296296296297
+    },
+    {
+      "fold": 4,
+      "model": "xgboost",
+      "best_inner_score": 0.6301587301587301
+    }
+  ],
+  "n_samples": 27,
+  "metrics": {
+    "accuracy": 0.48148148148148145,
+    "precision_macro": 0.45634920634920634,
+    "recall_macro": 0.48148148148148157,
+    "f1_macro": 0.46241830065359474,
+    "roc_auc_macro": 0.6368312757201646,
+    "mAP": 0.5007847442788963,
+    "pr_auc_macro": 0.4753892990808195
+  },
+  "posthoc_winner": {
+    "model": "random_forest",
+    "accuracy": 0.5555555555555556,
+    "f1_macro": 0.5386243386243387
+  },
+  "note": "每折按内层 macro-F1 选模型后拼接折外预测；模型选择不含事后挑选，仍非独立外部测试集。"
+}

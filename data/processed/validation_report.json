@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "有 1 行样本存在 |z|>3 的极值特征，保留样本并核对，不因影响得分而删除。"
+  ],
+  "checks": {
+    "feature_columns_present": true,
+    "n_samples_27": true,
+    "class_counts": {
+      "0": 9,
+      "1": 9,
+      "2": 9
+    },
+    "all_numeric": true,
+    "duplicate_feature_rows": 0,
+    "n_extreme_rows_z3": 1
+  }
+}
