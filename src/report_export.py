@@ -165,7 +165,11 @@ def _add_table(doc, rows: list[list[str]]):
 
 
 def _split_row(line: str) -> list[str]:
-    return [c.strip() for c in line.strip().strip("|").split("|")]
+    r"""按未转义的「|」切分 Markdown 表格行，并还原单元格内转义的「\|」。"""
+    body = line.strip()
+    body = body[1:] if body.startswith("|") else body
+    body = body[:-1] if body.endswith("|") and not body.endswith(r"\|") else body
+    return [c.strip().replace(r"\|", "|") for c in re.split(r"(?<!\\)\|", body)]
 
 
 def markdown_to_docx(report_md: str, base_dir: Path, out_path: Path) -> None:

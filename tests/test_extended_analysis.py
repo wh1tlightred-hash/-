@@ -233,3 +233,18 @@ def test_write_reports_returns_all_formats(tiny_png):
     out = write_reports(_MD, tiny_png / "a.md", tiny_png / "a.html", tiny_png / "a.docx")
     assert set(out) == {"md", "html", "docx"} and all(p.exists() for p in out.values())
     assert (tiny_png / "a.md").read_text(encoding="utf-8") == _MD  # Markdown 原样保存（相对路径）
+
+
+def test_pipe_in_table_cells_does_not_break_tables(tmp_path):
+    """表头/单元格含「|」（如 mean(|SHAP|)）时，HTML 与 Word 中仍是完整的三列表格。"""
+    import docx
+
+    from src.report import _df_md
+
+    md = _df_md(pd.DataFrame({"特征": ["F1"], "mean(|SHAP|)": [0.123456], "排名": [1]}),
+                float_cols=["mean(|SHAP|)"], nd=4)
+    html = markdown_to_html(md, tmp_path, embed_images=False)
+    assert "<th>mean(|SHAP|)</th>" in html and "<td>0.1235</td>" in html
+    markdown_to_docx(md, tmp_path, tmp_path / "t.docx")
+    t = docx.Document(str(tmp_path / "t.docx")).tables[0]
+    assert [c.text for c in t.rows[0].cells] == ["特征", "mean(|SHAP|)", "排名"]

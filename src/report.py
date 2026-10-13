@@ -22,7 +22,11 @@ def _df_md(df, float_cols=None, nd=3):
         return "（无数据）\n"
     float_cols = set(float_cols or [])
     cols = list(df.columns)
-    header = "| " + " | ".join(str(c) for c in cols) + " |"
+
+    def esc(text) -> str:  # 单元格里的「|」（如 mean(|SHAP|)）会被当成列分隔符，必须转义
+        return str(text).replace("|", r"\|")
+
+    header = "| " + " | ".join(esc(c) for c in cols) + " |"
     sep = "| " + " | ".join("---" for _ in cols) + " |"
     lines = [header, sep]
     for _, row in df.iterrows():
@@ -32,7 +36,7 @@ def _df_md(df, float_cols=None, nd=3):
             if c in float_cols:
                 cells.append(_fmt(v, nd))
             else:
-                cells.append(str(v) if v is not None else "")
+                cells.append(esc(v) if v is not None else "")
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"
 
@@ -186,7 +190,7 @@ def build_report(R: dict) -> str:
         A("")
     A("三类聚合 mean(|SHAP|) 排名：")
     A("")
-    A(_df_md(R["shap_agg_table"], float_cols=["mean_abs_shap_overall"]))
+    A(_df_md(R["shap_agg_table"], float_cols=["mean(|SHAP|)"], nd=4))
     A("")
 
     A("### 4.10 切分稳定性（种子 43、44 补充）")
