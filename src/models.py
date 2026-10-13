@@ -161,3 +161,23 @@ def grid_n_candidates(grid) -> int:
             n *= len(v)
         total += n
     return total
+
+
+# 验证曲线：每个模型只扫一个最关键的超参数（其余保持默认），用于观察欠/过拟合趋势。
+# 取值比调参搜索空间更宽，以便看到曲线两端；它不参与主实验调参。
+_VALIDATION_PARAMS = {
+    "logistic": ("clf__C", [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]),
+    "svm": ("clf__C", [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]),
+    "gnb": ("clf__var_smoothing", [1e-11, 1e-9, 1e-7, 1e-5, 1e-3, 1e-1]),
+    "knn": ("clf__n_neighbors", [1, 3, 5, 7, 9, 11]),
+    "random_forest": ("clf__max_depth", [1, 2, 3, 5, None]),
+    "xgboost": ("clf__max_depth", [1, 2, 3, 4, 6]),
+}
+
+
+def get_validation_param(name: str) -> tuple[str, list]:
+    """返回 (Pipeline 参数名, 取值列表)，供验证曲线使用。"""
+    if name not in _VALIDATION_PARAMS:
+        raise KeyError(f"未知模型名：{name}")
+    param, values = _VALIDATION_PARAMS[name]
+    return param, list(values)

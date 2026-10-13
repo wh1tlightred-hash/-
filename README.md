@@ -2,7 +2,9 @@
 
 对疑似冠心病患者的中医声诊样本做风险三分类（低危=0 / 中危=1 / 高危=2），
 实现并比较六种分类器与 Dummy 基线，进行嵌套交叉验证、超参数调优、指标评估、
-SHAP 解释与完整模型交付。全部结果来自真实运行。
+SHAP 解释与完整模型交付；并在此基础上做了扩展分析：补充对比曲线、多种交叉验证方案对比与
+置换检验、学习/验证曲线、概率校准、SHAP 蜂群/依赖/瀑布图、折外 SHAP 与六模型 SHAP 对比，
+报告同时输出 Markdown / 单文件 HTML / Word。全部结果来自真实运行。
 
 ## 数据
 
@@ -16,7 +18,8 @@ SHAP 解释与完整模型交付。全部结果来自真实运行。
 - 操作系统：Windows 11（AMD64）。解释器：**Python 3.14.7**（官方当前最新稳定版；3.15 仍为预发布）。
 - 包管理器：本机使用 `uv`；虚拟环境可按下方命令在项目内创建为 `.venv/`。虚拟环境与下载缓存属于本机文件，不纳入 Git 交付。
 - 关键版本：numpy 2.5.3 / pandas 3.0.6 / scipy 1.18.1 / scikit-learn 1.9.1 / matplotlib 3.11.2 /
-  seaborn 0.13.2 / xgboost 3.4.1 / shap 0.52.0 / joblib 1.6.0 / pytest 9.1.1 / openpyxl 3.1.5。
+  seaborn 0.13.2 / xgboost 3.4.1 / shap 0.52.0 / joblib 1.6.0 / pytest 9.1.1 / openpyxl 3.1.5 /
+  python-docx 1.2.0（Word 报告导出）。
 - `python -m pip check`：No broken requirements found。
 - 完整环境核验见 `logs/environment_check.json` 与 `logs/pip_check.txt`；锁定依赖 `requirements-lock.txt`。
 
@@ -47,7 +50,16 @@ python -m venv .venv
 export UV_CACHE_DIR="$PWD/.uv-cache"
 uv venv .venv --python 3.14
 uv pip install --python .venv/Scripts/python.exe -r requirements-lock.txt
+# uv 建的虚拟环境默认不带 pip；main.py 的环境核验要运行 `python -m pip check`，因此补装 pip
+uv pip install --python .venv/Scripts/python.exe pip
 ./.venv/Scripts/python.exe -m pip check
+```
+
+若直连 PyPI 下载超时（例如本机代理未开启），可临时改用国内镜像，版本号仍按锁定文件安装：
+
+```bash
+uv pip install --python .venv/Scripts/python.exe \
+  --index-url https://pypi.tuna.tsinghua.edu.cn/simple -r requirements-lock.txt
 ```
 
 ```powershell
@@ -68,12 +80,35 @@ uv pip install --python .venv\Scripts\python.exe -r requirements-lock.txt
 ## 一键运行
 
 ```bash
-.venv/Scripts/python.exe main.py
+.venv/Scripts/python.exe main.py                # 完整实验，本机实测约 9–12 分钟
+.venv/Scripts/python.exe main.py --report-only  # 不重新训练，用上次结果重生成报告（约 10 秒）
 ```
 
-`main.py` 依次完成：数据加载与契约校验 → 环境核验 → 种子 42 主嵌套交叉验证（外层 5 折 / 内层 3 折）→
-种子 43/44 切分稳定性 → 胜者选择 → 不确定性量化与选择乐观性补充分析 → 全量最终模型重拟合与保存 →
-SHAP → 图表 → 中文报告。
+`main.py` 依次完成（共 10 步）：数据加载与契约校验 → 环境核验 → 种子 42 主嵌套交叉验证（外层 5 折 / 内层 3 折）→
+种子 43/44 切分稳定性 → 胜者选择、不确定性量化与基础图表 → **补充对比曲线** → **交叉验证深入分析** →
+全量最终模型重拟合与保存 → SHAP（基础 + **扩展**）→ 中文报告（`report/实验报告.md` / `.html` / `.docx`）。
+
+`--report-only` 读取 `results/report_context.joblib`（完整运行时保存），只重新渲染报告；
+修改了 `src/report.py` / `src/report_export.py` 的版式后用它即可，不必重跑整个实验。
+
+## 扩展分析（报告第 5–7 章）
+
+扩展分析**不改动**主实验（种子、切分、内层评分、胜者判定全部不变），也不参与胜者选择。
+
+| 章节 | 内容 | 主要产物 |
+| --- | --- | --- |
+| §5 补充对比曲线 | 调参前后 ROC、逐折 ROC ±1 标准差带、按风险类别的六模型 ROC/PR、逐折指标箱线图、多指标雷达图、训练-折外差距哑铃图、三种子稳定性 | `results/figures/roc_*.png`、`class_model_comparison.png`、`fold_metric_box.png`、`radar_metrics.png`、`train_vs_oof_gap.png`、`seed_stability.png` |
+| §6 交叉验证深入分析 | 分层 3/5/9 折、留一法、重复分层 5 折×10 的方案对比；标签置换检验；分层学习曲线；单参数验证曲线；概率校准（Brier / log loss / ECE / 可靠性曲线） | `results/cv_analysis/*.csv`、`cv_schemes.png`、`cv_repeated_box.png`、`permutation_test.png`、`learning_curves.png`、`validation_curves.png`、`calibration.png` |
+| §7 SHAP 深入分析 | 蜂群图、依赖图、代表样本瀑布图；**折外 SHAP**（每条样本由没见过它的折模型解释）与逐折排名稳定性；**六模型 SHAP 对比**（占比归一化） | `results/shap/*`、`shap_beeswarm*.png`、`shap_dependence.png`、`shap_waterfall.png`、`shap_cv_stability.png`、`shap_model_comparison.png` |
+
+口径要点：
+
+- §6.1–6.5 使用**默认超参数**的完整 Pipeline，不在全数据上先调参，因此无调参泄漏；6.6 使用主实验调参版折外概率（SVM 为决策分数，不参与）。
+- 留一法下 Dummy 基线 Accuracy=0：三类严格均衡时，留出样本所属类在训练集中必为少数类。这是留一法的已知悲观偏差，报告中已说明。
+- XGBoost 的 TreeExplainer 输出是**原始 margin**（非概率），代码与报告都如实标注；SVM 为决策分数。六模型对比因此先在各模型内归一化为占比。
+- 本轮实测：6 个模型在置换检验中均未达到 p<0.05；6 个调参模型的高危类 OvR AUC 均低于 0.5（详见报告摘要）。
+
+预算全部在 `config.json` 的 `analysis` 段配置（置换次数、重复次数、学习曲线每类样本数等）。
 
 ## 不确定性量化与选择乐观性（补充分析）
 
@@ -86,7 +121,7 @@ SHAP → 图表 → 中文报告。
 | 胜者与 Dummy 先验基线做**配对**精确 McNemar 检验 | 不一致对约 16 条，**p ≈ 0.077 > 0.05**：以本样本量尚不能认为胜者优于先验基线 | `results/mcnemar.json` |
 | 每折只按**该折内层分数**选模型、再拼接折外预测（不含事后挑选） | 得 Accuracy 0.481 / macro-F1 0.462，低于事后挑出的 0.556 / 0.539。**这是两套不同策略，差值同时混合策略差异、样本波动与选择效应，不能当作选择偏差的大小**；能说的是结论对「用哪种方式选模型」敏感 | `results/selection_estimate.json` |
 
-三点都写进报告 §4.11 与 §6.1。要点：
+三点都写进报告 §4.11 与 §9.1。要点：
 
 - bootstrap 是**样本级**重采样，不是人群抽样，也不能把种子 42/43/44 的重复预测当成更多患者；
   它**固定了已拟合的折外预测**，没有重跑训练/调参/切分，因此不是「完整建模流程泛化性能」的已证 95% 置信区间。
@@ -113,7 +148,7 @@ SHAP → 图表 → 中文报告。
 ```
 
 覆盖：数据契约、切分泄漏与索引完整性、OOF 指标重算一致性、模型序列化预测一致性、错误输入校验、
-以及不确定性量化（bootstrap 区间、配对检验、含模型选择的估计与绘图字段契约）。本次审查运行结果为 **57 passed**。
+以及不确定性量化（bootstrap 区间、配对检验、含模型选择的估计与绘图字段契约）。本次运行结果为 **74 passed**（含扩展分析测试 17 项）。
 依赖 `main.py` 产物的用例在产物缺失时自动 skip；先运行 `main.py` 再跑 pytest 即全量执行。
 `conftest.py` 为每次运行在项目内的 `.pytest_runs/` 创建独立临时目录，并在测试结束后清理。
 
@@ -126,7 +161,7 @@ SHAP → 图表 → 中文报告。
 按 `PROJECT_BRIEF.md` 第 8 节的验收要求，对**磁盘上已生成的真实产物**逐条核查（不重新训练、不推测）：
 数据形状与原始附件哈希、外层/内层切分完整性、元数据未进入 X、六模型与 Dummy 均实际运行、
 OOF 数量与分数列序、指标重算一致性、混淆矩阵合计 27、模型重载与错误输入、报告与图表产出，
-以及补充分析产物与「报告中的解释器路径指向当前副本位置」。本次审查结果为 **56 项检查，56/56 通过**。
+以及补充分析产物与「报告中的解释器路径指向当前副本位置」。本次运行结果为 **67 项检查，67/67 通过**（含第 9 项扩展分析核查）。
 全部通过时退出码为 0，任一不通过为 1 并打印未通过项。
 
 原件目录默认取构建本项目时的 `C:\Users\swild\Downloads`。若仓库被克隆到别的机器或原件已清理，
@@ -138,13 +173,20 @@ OOF 数量与分数列序、指标重算一致性、混淆矩阵合计 27、模�
 ```text
 inputs/                  原始附件（保持不变）
 src/                     数据、模型、评估、指标、绘图、解释、不确定性、报告模块
-tests/                   数据契约、切分、OOF 重算、序列化、错误输入、不确定性测试
+  cv_analysis.py         CV 方案对比 / 置换检验 / 学习曲线 / 验证曲线 / 校准
+  curves.py              补充对比曲线
+  shap_plots.py          SHAP 蜂群 / 依赖 / 瀑布 / 多模型热力图 / 折外对照
+  extended.py            第 5–7 章编排（计算 → 落盘 → 生成报告小节）
+  report_export.py       Markdown → 单文件 HTML（含目录）/ Word
+tests/                   数据契约、切分、OOF 重算、序列化、错误输入、不确定性、扩展分析测试
 data/processed/          合并数据、来源映射、标签映射、校验报告
 results/                 OOF/逐折/参数/预算/图像/日志/最终模型/稳定性/不确定性
                          uncertainty.csv（bootstrap 区间）、mcnemar.json（配对检验）、
                          selection_estimate.json（含模型选择的估计）
+                         cv_analysis/（§6 交叉验证深入分析）、shap/（§7 扩展 SHAP）
+                         report_context.joblib（--report-only 使用）
 models/                  最终管线 joblib 与元数据
-report/                  实验报告.md / 实验报告.html（图像相对路径）
+report/                  实验报告.md（图像相对路径）/ 实验报告.html（图片内嵌、单文件）/ 实验报告.docx
 config.json              种子、切分、搜索空间、资源预算
 main.py                  一键实验入口
 predict.py               新样本预测入口
@@ -191,3 +233,6 @@ README.md / 查看指南.md
 | `shap.nsamples_kernel` | 生效（KernelExplainer 采样数） |
 | `shap.background` / `shap.explain_all_train` | **描述性**：当前固定为「全部训练样本」背景 + 解释全部训练样本，改这两项不会改变行为 |
 | `label_map` / `class_names` / `feature_columns` | 生效且被强校验（不匹配即报错） |
+| `analysis.cv_schemes` / `permutation` / `learning_curve` / `validation_curve` / `calibration_bins` | 生效（§6 各分析的方案与预算） |
+| `analysis.shap_cv` / `shap_all_models` / `shap_dependence_top_k` | 生效（§7 折外 SHAP、六模型对比开关，依赖图特征数） |
+| `report.formats` / `report.html_embed_images` | 生效（是否输出 Word；HTML 是否内嵌图片） |

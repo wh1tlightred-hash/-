@@ -1,15 +1,43 @@
 {
   "seed": 42,
-  "stability_seeds": [43, 44],
-  "outer_cv": { "n_splits": 5, "shuffle": true },
-  "inner_cv": { "n_splits": 3, "shuffle": true },
+  "stability_seeds": [
+    43,
+    44
+  ],
+  "outer_cv": {
+    "n_splits": 5,
+    "shuffle": true
+  },
+  "inner_cv": {
+    "n_splits": 3,
+    "shuffle": true
+  },
   "inner_scoring": "f1_macro",
   "max_candidates_per_model": 20,
   "n_iter_random": 20,
   "n_jobs": 1,
-  "feature_columns": ["FO", "I", "F1", "F2", "F3", "F4", "B1", "B2", "B3", "B4"],
-  "label_map": { "低危": 0, "中危": 1, "高危": 2 },
-  "class_names": ["低危", "中危", "高危"],
+  "feature_columns": [
+    "FO",
+    "I",
+    "F1",
+    "F2",
+    "F3",
+    "F4",
+    "B1",
+    "B2",
+    "B3",
+    "B4"
+  ],
+  "label_map": {
+    "低危": 0,
+    "中危": 1,
+    "高危": 2
+  },
+  "class_names": [
+    "低危",
+    "中危",
+    "高危"
+  ],
   "input_xlsx": "inputs/声诊练习.xlsx",
   "input_docx": "inputs/中医声诊实验.docx",
   "data_processed_dir": "data/processed",
@@ -21,5 +49,51 @@
     "nsamples_kernel": 400,
     "explain_all_train": true
   },
-  "zero_division": 0
+  "zero_division": 0,
+  "analysis": {
+    "cv_schemes": {
+      "kfold": [
+        3,
+        5,
+        9
+      ],
+      "loo": true,
+      "repeated": {
+        "n_splits": 5,
+        "n_repeats": 10
+      }
+    },
+    "permutation": {
+      "n_permutations": 100,
+      "cv_splits": 5
+    },
+    "learning_curve": {
+      "per_class_sizes": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "n_splits": 5,
+      "n_repeats": 3
+    },
+    "validation_curve": {
+      "n_splits": 5,
+      "n_repeats": 3
+    },
+    "calibration_bins": 3,
+    "shap_all_models": true,
+    "shap_cv": true,
+    "shap_dependence_top_k": 4
+  },
+  "report": {
+    "formats": [
+      "md",
+      "html",
+      "docx"
+    ],
+    "html_embed_images": true
+  }
 }

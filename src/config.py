@@ -27,6 +27,9 @@ _DEFAULTS: dict = {
     "report_dir": "report",
     "shap": {"background": "all_train", "nsamples_kernel": 400, "explain_all_train": True},
     "zero_division": 0,
+    # 补充分析（交叉验证方案对比、置换检验、学习/验证曲线、校准、扩展 SHAP）
+    "analysis": {"cv_schemes": {"kfold": [3, 5, 9], "loo": True, "repeated": {"n_splits": 5, "n_repeats": 10}}, "permutation": {"n_permutations": 100, "cv_splits": 5}, "learning_curve": {"per_class_sizes": [2, 3, 4, 5, 6, 7], "n_splits": 5, "n_repeats": 3}, "validation_curve": {"n_splits": 5, "n_repeats": 3}, "calibration_bins": 3, "shap_all_models": True, "shap_cv": True, "shap_dependence_top_k": 4},
+    "report": {"formats": ["md", "html", "docx"], "html_embed_images": True},
 }
 
 

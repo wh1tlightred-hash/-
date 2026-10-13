@@ -2,7 +2,7 @@
   "platform": "Windows-11-10.0.26200-SP0",
   "arch": "AMD64",
   "python": "3.14.7",
-  "executable": "C:\\Users\\swild\\Documents\\中医声诊项目_最终交付\\.venv\\Scripts\\python.exe",
+  "executable": "C:\\Users\\swild\\Documents\\ChatGPT\\coding\\ml-project\\.venv\\Scripts\\python.exe",
   "pip_check": "No broken requirements found.",
   "packages": {
     "numpy": "2.5.3",
