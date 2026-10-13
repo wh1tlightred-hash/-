@@ -27,8 +27,10 @@ from src.report_export import markdown_to_docx, markdown_to_html, write_reports
 
 
 @pytest.fixture(scope="module")
-def cfg():
+def cfg(tmp_path_factory):
     c = copy.deepcopy(load_config())
+    # run_nested_cv 会写搜索审计文件；指向临时目录，避免覆盖 results/ 下的正式运行产物
+    c["results_dir"] = str(tmp_path_factory.mktemp("results"))
     c["analysis"]["cv_schemes"] = {"kfold": [3], "loo": True, "repeated": {"n_splits": 3, "n_repeats": 2}}
     c["analysis"]["permutation"] = {"n_permutations": 4, "cv_splits": 3}
     c["analysis"]["learning_curve"] = {"per_class_sizes": [2, 4, 9], "n_splits": 3, "n_repeats": 1}
