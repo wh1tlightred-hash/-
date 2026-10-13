@@ -1,9 +1,12 @@
 """中医声诊三分类项目一键实验入口。
 
 流程：环境核验 → 数据加载/校验/落盘 → 种子 42 主嵌套 CV → 种子 43/44 稳定性 →
-胜者选择 → 全量最终模型（训练内调参 + 拟合 + 保存）→ SHAP → 图表 → 中文报告。
+胜者选择与基础图表 → 补充对比曲线 → 交叉验证深入分析 → 全量最终模型（训练内调参 + 拟合 + 保存）→
+SHAP（基础 + 蜂群/依赖/瀑布/折外/六模型对比）→ 中文报告（Markdown / HTML / Word）。
 
-运行：.venv/Scripts/python.exe main.py
+运行：
+  .venv/Scripts/python.exe main.py                # 完整实验（约 9–12 分钟）
+  .venv/Scripts/python.exe main.py --report-only  # 不重新训练，只用上次保存的结果重生成报告
 """
 from __future__ import annotations
 
@@ -11,7 +14,6 @@ import json
 import os
 import sys
 import time
-import warnings
 from collections import Counter
 from pathlib import Path
 
@@ -30,7 +32,7 @@ from src.data import (  # noqa: E402
     split_xy,
     validate_dataset,
 )
-from src.eval import oof_metrics, run_nested_cv  # noqa: E402
+from src.eval import oof_metrics, refit_on_full_data, run_nested_cv  # noqa: E402
 from src.explain import explain_model, plot_shap  # noqa: E402
 from src.metrics import compute_metrics  # noqa: E402
 from src.models import (  # noqa: E402
@@ -39,8 +41,6 @@ from src.models import (  # noqa: E402
     REAL_MODELS,
     SIMPLICITY_ORDER,
     VERSION_SHORT,
-    build_pipeline,
-    get_search_space,
 )
 from src.plot import (  # noqa: E402
     plot_class_counts,
@@ -51,6 +51,7 @@ from src.plot import (  # noqa: E402
     plot_per_class_curves,
     plot_uncertainty,
 )
+from src.extended import curve_sections, cv_sections, shap_sections  # noqa: E402
 from src.report import build_report, write_reports  # noqa: E402
 from src.uncertainty import (  # noqa: E402
     bootstrap_ci,
@@ -101,10 +102,10 @@ def _save_json(obj, path: Path):
         json.dump(obj, f, ensure_ascii=False, indent=2, default=str)
 
 
-def _run_one_seed(cfg, X, y, meta, seed: int, results_dir: Path) -> dict:
+def _run_one_seed(cfg, X, y, meta, seed: int, results_dir: Path, keep_models: bool = False) -> dict:
     """运行一轮嵌套 CV 并落盘 OOF、逐折记录、预算、OOF 指标。"""
     seed_dir = results_dir / f"seed{seed}"
-    res = run_nested_cv(X, y, meta, cfg, seed=seed)
+    res = run_nested_cv(X, y, meta, cfg, seed=seed, keep_models=keep_models)
 
     oof_dir = seed_dir / "oof"
     for (model, version), df in res["oof"].items():
@@ -211,26 +212,10 @@ def _uncertainty(cfg, oof, folds_df, win, results_dir: Path) -> dict:
 
 def _refit_final(cfg, X, y, model_name: str, seed: int, n_jobs: int):
     """在全部 27 条样本上重新做训练内调参并拟合最终模型（仅用于演示预测）。"""
-    from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, StratifiedKFold
-
-    inner = StratifiedKFold(n_splits=cfg["inner_cv"]["n_splits"], shuffle=cfg["inner_cv"]["shuffle"], random_state=seed)
     Xn = np.asarray(X, dtype=float)
-    min_inner = min(len(tr) for tr, _ in inner.split(Xn, y))
-    grid, search_type = get_search_space(model_name, min_inner)
-    pipe = build_pipeline(model_name, seed=seed, n_jobs=n_jobs, params=None)
-    common = dict(cv=inner, scoring=cfg["inner_scoring"], refit=True, n_jobs=n_jobs)
-    if search_type == "grid":
-        search = GridSearchCV(pipe, grid, **common)
-    else:
-        search = RandomizedSearchCV(pipe, grid, n_iter=int(cfg["n_iter_random"]), random_state=seed, **common)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        search.fit(Xn, y)
-    best_params = {k.removeprefix("clf__"): v for k, v in search.best_params_.items()}
-    final_pipe = search.best_estimator_
+    final_pipe, best_params, best_score, warn_msgs = refit_on_full_data(cfg, Xn, y, model_name, seed, n_jobs)
     train_metrics = compute_metrics(y, _score(final_pipe, Xn), final_pipe.predict(Xn), cfg["zero_division"])
-    warn_msgs = [f"{w.category.__name__}: {w.message}" for w in caught]
-    return final_pipe, best_params, search.best_score_, train_metrics, warn_msgs
+    return final_pipe, best_params, best_score, train_metrics, warn_msgs
 
 
 def _score(pipeline, X):
@@ -252,7 +237,7 @@ def main() -> None:
         d.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print("[1/8] 数据加载与校验")
+    print("[1/10] 数据加载与校验")
     df = load_dataset(cfg["input_xlsx"], cfg["feature_columns"])
     val = validate_dataset(df, cfg["feature_columns"])
     if not val["ok"]:
@@ -269,18 +254,18 @@ def main() -> None:
     for w in val["warnings"]:
         print(f"   警告：{w}")
 
-    print("[2/8] 环境核验")
+    print("[2/10] 环境核验")
     env = _env_info(cfg)
     _save_json(env, logs_dir / "environment_check.json")
     with open(logs_dir / "pip_check.txt", "w", encoding="utf-8") as f:
         f.write(env["pip_check"] + "\n")
     print(f"   Python {env['python']} | sklearn {env['packages']['scikit-learn']} | xgboost {env['packages']['xgboost']}")
 
-    print("[3/8] 种子 42 主嵌套交叉验证（外层5折/内层3折）")
-    main_run = _run_one_seed(cfg, X, y, meta, cfg["seed"], results_dir)
+    print("[3/10] 种子 42 主嵌套交叉验证（外层5折/内层3折）")
+    main_run = _run_one_seed(cfg, X, y, meta, cfg["seed"], results_dir, keep_models=True)
     om42 = main_run["oof_metrics"]
 
-    print("[4/8] 种子 43/44 切分稳定性")
+    print("[4/10] 种子 43/44 切分稳定性")
     stability_rows = []
     for s in cfg["stability_seeds"]:
         r = _run_one_seed(cfg, X, y, meta, s, results_dir)
@@ -290,7 +275,7 @@ def main() -> None:
     stability = pd.concat([om42.copy().assign(seed=cfg["seed"])] + stability_rows, ignore_index=True)
     stability.to_csv(results_dir / "stability.csv", index=False)
 
-    print("[5/8] 胜者选择与图表")
+    print("[5/10] 胜者选择与基础图表")
     win = _winner(om42, cfg)
     _save_json(win, results_dir / "winner.json")
 
@@ -364,7 +349,23 @@ def main() -> None:
         conf_figs.append({"title": f"{MODEL_LABELS[m]} 混淆矩阵（计数，合计 {int(cm.sum())}）", "path": f"../results/figures/{base}_count.png"})
         conf_figs.append({"title": f"{MODEL_LABELS[m]} 混淆矩阵（行归一化）", "path": f"../results/figures/{base}_norm.png"})
 
-    print("[6/8] 最终模型重拟合 + 保存")
+    print("[6/10] 补充对比曲线")
+    ext = {}
+    ext["curve_sections"] = curve_sections(cfg, oof, om42, folds_df, stability,
+                                           _train_oof_frame(folds_df, om42), fig_dir)
+
+    print("[7/10] 交叉验证深入分析（CV 方案对比 / 置换检验 / 学习曲线 / 验证曲线 / 校准）")
+    ext["cv_sections"], cv_summary = cv_sections(cfg, X, y, oof, fig_dir, results_dir / "cv_analysis",
+                                                 log=lambda m: print(m))
+    ext["cv_intro"] = (
+        "第 4 章的主结果来自预先固定的种子 42 嵌套交叉验证。本章换几个角度检查它：换一种 CV 方案结论是否一样、"
+        "模型是否显著优于随机标签、样本量与超参数如何影响性能、输出概率是否可信。"
+        "除 6.6 节使用主实验的调参版折外概率外，其余各节都使用**默认超参数**的完整 Pipeline，"
+        "不在全数据上先调参，因此没有调参泄漏；但它们刻画的是模型家族的行为，**不替代**第 4 章的主结果，"
+        "也不参与胜者判定。产物位于 `results/cv_analysis/`。"
+    )
+
+    print("[8/10] 最终模型重拟合 + 保存")
     final_model_name = win["f1_best"]
     final_pipe, best_params, best_inner_score, train_metrics, warn_msgs = _refit_final(
         cfg, X, y, final_model_name, cfg["seed"], int(cfg["n_jobs"])
@@ -392,21 +393,37 @@ def main() -> None:
     _save_json(final_meta, final_model_dir / "metadata.json")
     _save_json(final_meta, models_dir / "final_metadata.json")
 
-    print("[7/8] SHAP 解释")
+    print("[9/10] SHAP 解释（基础 + 扩展）")
     shap_result = explain_model(final_pipe, X, cfg["feature_columns"], cfg["class_names"], cfg)
     np.savez(final_model_dir / "shap_values.npz", values=shap_result["values"])
     shap_result["aggregate"].to_csv(final_model_dir / "shap_ranking.csv", index=False)
     _save_json(shap_result["meta"], final_model_dir / "shap_meta.json")
     plot_shap(shap_result["values"], cfg["feature_columns"], cfg["class_names"], str(fig_dir / "shap.png"))
     fig_paths["shap"] = "../results/figures/shap.png"
+    ext["shap_sections"], shap_summary = shap_sections(cfg, X, y, meta, final_pipe, final_model_name,
+                                                       shap_result, main_run["res"], fig_dir,
+                                                       results_dir / "shap", log=lambda m: print(m))
+    ext["shap_intro"] = (
+        "第 4.9 节给出了最终模型的 mean(|SHAP|) 排名。本章进一步回答：特征取值高低如何影响预测（蜂群图、依赖图）、"
+        "单个样本的预测如何由各特征累加而成（瀑布图）、重要性排名换一批训练样本是否稳定（折外 SHAP）、"
+        "换一个模型结论是否一致（六模型对比）。所有 SHAP 结果都是**模型行为的描述**，不是因果证据、不是外部验证；"
+        "在模型整体表现接近基线（见 4.11、6.3 节）的前提下，更不能把重要特征解读为有效的诊断指标。"
+        "产物位于 `results/shap/`。"
+    )
 
-    print("[8/8] 生成报告")
-    report_md = _build_report_dict_and_md(
+    print("[10/10] 生成报告（Markdown / HTML / Word）")
+    R = _build_report_dict(
         cfg, env, hashes, val, om42, fold_agg, main_run["res"]["budget"],
         folds_df, stability, win, fig_paths, per_class_figs, conf_figs,
         final_meta, shap_result, unc,
     )
-    write_reports(report_md, report_dir / "实验报告.md", report_dir / "实验报告.html")
+    R["ext"] = ext
+    R["conclusion_text"] = R["conclusion_text"] + "\n\n" + _extended_findings(cfg, om42, cv_summary, shap_summary)
+    R["summary_text"] = R["conclusion_text"]
+    import joblib as _joblib
+
+    _joblib.dump(R, results_dir / "report_context.joblib")
+    _write_all_reports(cfg, R, report_dir)
 
     _save_json({
         "winner": win,
@@ -421,9 +438,76 @@ def main() -> None:
     print(f"报告：{report_dir / '实验报告.md'} 与 {report_dir / '实验报告.html'}")
 
 
-def _build_report_dict_and_md(cfg, env, hashes, val, om42, fold_agg, budget, folds_df,
-                              stability, win, fig_paths, per_class_figs, conf_figs,
-                              final_meta, shap_result, unc) -> str:
+def _train_oof_frame(folds_df: pd.DataFrame, om42: pd.DataFrame) -> pd.DataFrame:
+    """训练折（逐折均值）与 OOF 的 macro-F1 对照，供过拟合差距图使用。"""
+    rows = []
+    for m in REAL_MODELS:
+        for version in ("untuned", "tuned"):
+            sub = folds_df[(folds_df["model"] == m) & (folds_df["version"] == version)]
+            o = om42[(om42["model"] == m) & (om42["version"] == version)].iloc[0]
+            rows.append({"model": m, "version": version,
+                         "train_f1_macro": float(np.mean(sub["train_f1_macro"])),
+                         "oof_f1_macro": float(o["f1_macro"])})
+    return pd.DataFrame(rows)
+
+
+def _extended_findings(cfg: dict, om42: pd.DataFrame, cv_summary: dict, shap_summary: dict) -> str:
+    """把第 5–7 章扩展分析的要点汇总进摘要与结论（数字全部来自本次运行）。"""
+    cn = cfg["class_names"]
+    tuned = om42[(om42["version"] == "tuned") & (om42["model"] != "dummy")]
+    hi_auc = [r["roc_auc_ovr"][2] for _, r in tuned.iterrows()]
+    n_below = sum(a is not None and a < 0.5 for a in hi_auc)
+    lines = ["**扩展分析（第 5–7 章）补充的要点：**", ""]
+    lines.append(
+        f"- **{cn[2]}类几乎没有可用的区分能力**：{len(hi_auc)} 个调参模型中有 {n_below} 个的{cn[2]}类 OvR AUC "
+        f"低于 0.5（§5.3），与{cn[2]}召回率低（§4.8）相互印证。")
+    sig = cv_summary.get("sig_models", [])
+    lines.append(
+        f"- **标签置换检验**（默认超参数，{cv_summary.get('n_perm')} 次置换，§6.3）："
+        + (f"仅 {'、'.join(sig)} 达到 p<0.05（未做多重比较校正）。" if sig
+           else "没有任何模型达到 p<0.05，无法排除「分数只是随机水平」。"))
+    lines.append("- **结论对评估方案敏感**：换用不同 CV 方案或随机切分，同一模型的 macro-F1 与模型名次都会明显变化"
+                 "（§5.7、§6.1、§6.2）；留一法在本数据上对先验基线有系统性悲观偏差。")
+    if shap_summary.get("common_top3"):
+        lines.append(
+            f"- **SHAP**：最终模型前三重要特征为 {'、'.join(shap_summary.get('top3_final', []))}；"
+            f"在至少 4 个模型中都排进前三的是 {'、'.join(shap_summary['common_top3'])}（§7.5）"
+            + (f"，全量与折外 SHAP 排名的 Spearman ρ={shap_summary['cv_rank_rho']:.2f}（§7.4）"
+               if "cv_rank_rho" in shap_summary else "")
+            + "。这只说明模型「用了」哪些特征；在整体性能接近基线时，不能当作诊断指标有效的证据。")
+    return "\n".join(lines)
+
+
+def _write_all_reports(cfg: dict, R: dict, report_dir: Path) -> dict:
+    """按 config.report 生成 Markdown / HTML（/ Word）。"""
+    rc = cfg.get("report", {})
+    formats = rc.get("formats", ["md", "html", "docx"])
+    out = write_reports(
+        build_report(R), report_dir / "实验报告.md", report_dir / "实验报告.html",
+        docx_path=(report_dir / "实验报告.docx") if "docx" in formats else None,
+        embed_images=bool(rc.get("html_embed_images", True)),
+    )
+    for k, v in out.items():
+        print(f"   {k}: {v}")
+    return out
+
+
+def report_only() -> None:
+    """不重新训练：读取上次完整运行保存的报告上下文，只重生成报告（改了报告模板/文字后使用）。"""
+    cfg = load_config()
+    ctx = ROOT / cfg["results_dir"] / "report_context.joblib"
+    if not ctx.exists():
+        raise SystemExit(f"未找到 {ctx}；请先完整运行一次 main.py。")
+    import joblib
+
+    R = joblib.load(ctx)
+    _write_all_reports(cfg, R, ROOT / cfg["report_dir"])
+    print("报告已按上次运行结果重新生成（未重新训练）。")
+
+
+def _build_report_dict(cfg, env, hashes, val, om42, fold_agg, budget, folds_df,
+                       stability, win, fig_paths, per_class_figs, conf_figs,
+                       final_meta, shap_result, unc) -> dict:
     from datetime import date
 
     class_names = cfg["class_names"]
@@ -686,8 +770,11 @@ def _build_report_dict_and_md(cfg, env, hashes, val, om42, fold_agg, budget, fol
         "limitations": limitations,
         "summary_text": conclusion,
     }
-    return build_report(R)
+    return R
 
 
 if __name__ == "__main__":
-    main()
+    if "--report-only" in sys.argv[1:]:
+        report_only()
+    else:
+        main()

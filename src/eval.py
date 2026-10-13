@@ -77,8 +77,14 @@ def run_nested_cv(
     cfg: dict,
     seed: int,
     model_names: list[str] | None = None,
+    keep_models: bool = False,
 ) -> dict:
-    """执行一轮嵌套交叉验证。返回 {'oof', 'folds', 'budget'}。"""
+    """执行一轮嵌套交叉验证。返回 {'oof', 'folds', 'budget', 'splits', 'fitted'}。
+
+    keep_models=True 时在 ``fitted[(model, version)]`` 中按外层折顺序保留已拟合的估计器
+    （调参版为内层搜索的 best_estimator_），供折外 SHAP、逐折曲线等补充分析使用；
+    这些估计器只见过各自的外层训练折。
+    """
     models = model_names or ALL_MODELS
     outer = StratifiedKFold(
         n_splits=cfg["outer_cv"]["n_splits"],
@@ -111,6 +117,7 @@ def run_nested_cv(
     oof: dict[tuple[str, str], pd.DataFrame] = {}
     folds: list[dict] = []
     budget: dict[str, dict] = {}
+    fitted: dict[tuple[str, str], list] = {}
 
     for name in models:
         is_real = name in REAL_MODELS
@@ -203,6 +210,10 @@ def run_nested_cv(
                     best_inner_score = float(search.best_score_)
                     warn_sum = _capture_warnings(caught)
 
+                if keep_models:
+                    fitted_est = est if not is_real else (pipe if version == "untuned" else search.best_estimator_)
+                    fitted.setdefault((name, version), []).append(fitted_est)
+
                 # 训练集指标（观察过拟合的辅助）
                 if not is_real:
                     tr_pred = est.predict(X_tr)
@@ -247,7 +258,7 @@ def run_nested_cv(
                 oof_df[f"score_{c}_{cn}"] = score_mat[:, c]
             oof[(name, version)] = oof_df.reset_index(drop=True)
 
-    return {"oof": oof, "folds": folds, "budget": budget}
+    return {"oof": oof, "folds": folds, "budget": budget, "splits": splits, "fitted": fitted}
 
 
 def aggregate_fold_metrics(folds: list[dict], metric_keys: list[str]) -> pd.DataFrame:
@@ -278,3 +289,24 @@ def oof_metrics(oof: dict[tuple[str, str], pd.DataFrame], cfg: dict) -> pd.DataF
         row.update(m)
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def refit_on_full_data(cfg: dict, X, y, model_name: str, seed: int, n_jobs: int = 1):
+    """在全部样本上做训练内调参（内层 CV，与主实验同一搜索空间/评分）并拟合。
+
+    用于最终演示模型与六模型 SHAP 对比；训练集得分不得替代 OOF 性能。
+    返回 (best_estimator, best_params, best_inner_score, warning_messages)。
+    """
+    inner = StratifiedKFold(n_splits=cfg["inner_cv"]["n_splits"], shuffle=cfg["inner_cv"]["shuffle"],
+                            random_state=seed)
+    Xn = np.asarray(X, dtype=float)
+    grid, search_type = get_search_space(model_name, _min_inner_train_size(Xn, y, inner))
+    pipe = build_pipeline(model_name, seed=seed, n_jobs=n_jobs, params=None)
+    search = _make_search(pipe, grid, search_type, inner, cfg["inner_scoring"], seed,
+                          int(cfg["n_iter_random"]), n_jobs)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        search.fit(Xn, y)
+    best_params = {k.removeprefix("clf__"): v for k, v in search.best_params_.items()}
+    warn_msgs = [f"{w.category.__name__}: {w.message}" for w in caught]
+    return search.best_estimator_, best_params, float(search.best_score_), warn_msgs

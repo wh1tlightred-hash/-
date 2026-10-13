@@ -1,9 +1,10 @@
-"""生成中文实验报告（Markdown 与 HTML），图表用相对路径引用，便于本机打开。"""
+"""生成中文实验报告正文（Markdown）。导出为 HTML / Word 见 report_export.py。
+
+Markdown 中图表用相对路径引用，便于在仓库内浏览；HTML 导出时内嵌为单文件。
+"""
 from __future__ import annotations
 
-from pathlib import Path
-
-import markdown as md_lib
+from .report_export import write_reports  # noqa: F401  （保持 src.report.write_reports 接口不变）
 
 
 def _fmt(x, nd=3):
@@ -42,42 +43,6 @@ def _list_md(items):
     return "\n".join(f"- {i}" for i in items) + "\n"
 
 
-_HTML_TEMPLATE = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>中医声诊三分类实验报告</title>
-<style>
-body{{font-family:"Microsoft YaHei","SimHei",sans-serif;max-width:1000px;margin:24px auto;padding:0 20px;line-height:1.7;color:#222;}}
-h1{{border-bottom:3px solid #3182bd;padding-bottom:8px;}}
-h2{{border-bottom:1px solid #ccc;padding-bottom:4px;margin-top:32px;color:#1a4a73;}}
-table{{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px;}}
-th,td{{border:1px solid #ccc;padding:6px 8px;text-align:center;}}
-th{{background:#eef3f8;}}
-img{{max-width:100%;border:1px solid #eee;margin:8px 0;}}
-code{{background:#f4f4f4;padding:1px 5px;border-radius:3px;}}
-pre{{background:#f4f4f4;padding:10px;border-radius:5px;overflow-x:auto;}}
-blockquote{{border-left:4px solid #3182bd;margin:12px 0;padding:4px 16px;color:#555;background:#f7fafc;}}
-</style>
-</head>
-<body>
-{body}
-</body>
-</html>
-"""
-
-
-def write_reports(report_md: str, md_path: str | Path, html_path: str | Path) -> None:
-    md_path = Path(md_path)
-    html_path = Path(html_path)
-    md_path.parent.mkdir(parents=True, exist_ok=True)
-    html_path.parent.mkdir(parents=True, exist_ok=True)
-    md_path.write_text(report_md, encoding="utf-8")
-    body = md_lib.markdown(report_md, extensions=["tables", "fenced_code", "sane_lists"])
-    html_path.write_text(_HTML_TEMPLATE.format(body=body), encoding="utf-8")
-
-
 def build_report(R: dict) -> str:
     """根据汇总字典 R 生成完整中文报告 Markdown 字符串。"""
     cfg = R["config"]
@@ -107,6 +72,8 @@ def build_report(R: dict) -> str:
     A(f"- 调参：内层主评分固定 macro-F1；LR/SVM/GNB/KNN 用 GridSearchCV，RF/XGBoost 用 RandomizedSearchCV（每折 ≤ {cfg['max_candidates_per_model']} 候选）；所有拟合型预处理均位于 Pipeline 内、只在训练折内拟合。")
     A(f"- 指标：Accuracy、macro/weighted/逐类 Precision、Recall、F1、OvR ROC-AUC（逐类+macro）、mAP（逐类 AP 算术平均）、macro PR-AUC（PR 曲线梯形积分，与 AP 算法不同）。")
     A(f"- 补充：种子 43、44 各完整重复嵌套流程，考察切分稳定性；主结果仍用 42。")
+    A(f"- 扩展分析（第 5–7 章）：补充对比曲线、交叉验证方案对比与置换检验、学习/验证曲线、概率校准、"
+      f"SHAP 蜂群/依赖/瀑布图、折外 SHAP 与六模型 SHAP 对比。它们**不改动**上述主实验规则与胜者判定。")
     A("")
     if fig.get("class_counts"):
         A(f"![类别样本数]({fig['class_counts']})")
@@ -250,18 +217,20 @@ def build_report(R: dict) -> str:
     A(R.get("unc_selection_text", ""))
     A("")
 
+    _extended_sections(R, A)
+
     # ---------- 最终模型 ----------
-    A("## 5 最终模型")
+    A("## 8 最终模型")
     A("")
     A(R.get("final_model_text", ""))
     A("")
 
     # ---------- 结论与限制 ----------
-    A("## 6 结论与限制")
+    A("## 9 结论与限制")
     A("")
     A(R.get("conclusion_text", ""))
     A("")
-    A("### 6.1 关键限制")
+    A("### 9.1 关键限制")
     A("")
     A(_list_md(R.get("limitations", [])))
     A("")
@@ -271,3 +240,74 @@ def build_report(R: dict) -> str:
     A("报告由 `main.py` 自动生成；复现命令见 `README.md`。所有原始附件保持不变。")
     A("")
     return "\n".join(L)
+
+
+def _figs(A, entries):
+    for e in entries or []:
+        if e.get("path"):
+            A(f"![{e['title']}]({e['path']})")
+            A("")
+        if e.get("note"):
+            A(e["note"])
+            A("")
+
+
+def _extended_sections(R: dict, A) -> None:
+    """第 5–7 章：补充对比曲线、交叉验证深入分析、SHAP 可解释性深入分析。缺项自动跳过。"""
+    X = R.get("ext", {})
+    if not X:
+        return
+
+    # ---------- 5 补充对比曲线 ----------
+    A("## 5 补充对比曲线")
+    A("")
+    A("本章的曲线全部来自第 4 章同一批真实折外预测（种子 42）或逐折记录，只换展示角度，不引入新的训练结果。")
+    A("")
+    for sec in X.get("curve_sections", []):
+        A(f"### {sec['heading']}")
+        A("")
+        if sec.get("text"):
+            A(sec["text"])
+            A("")
+        _figs(A, sec.get("figs"))
+        if sec.get("table") is not None:
+            A(_df_md(sec["table"], float_cols=sec.get("float_cols", [])))
+            A("")
+
+    # ---------- 6 交叉验证深入分析 ----------
+    A("## 6 交叉验证深入分析")
+    A("")
+    A(X.get("cv_intro", ""))
+    A("")
+    for sec in X.get("cv_sections", []):
+        A(f"### {sec['heading']}")
+        A("")
+        if sec.get("text"):
+            A(sec["text"])
+            A("")
+        if sec.get("table") is not None:
+            A(_df_md(sec["table"], float_cols=sec.get("float_cols", [])))
+            A("")
+        _figs(A, sec.get("figs"))
+        if sec.get("after"):
+            A(sec["after"])
+            A("")
+
+    # ---------- 7 SHAP 可解释性深入分析 ----------
+    A("## 7 SHAP 可解释性深入分析")
+    A("")
+    A(X.get("shap_intro", ""))
+    A("")
+    for sec in X.get("shap_sections", []):
+        A(f"### {sec['heading']}")
+        A("")
+        if sec.get("text"):
+            A(sec["text"])
+            A("")
+        _figs(A, sec.get("figs"))
+        if sec.get("table") is not None:
+            A(_df_md(sec["table"], float_cols=sec.get("float_cols", [])))
+            A("")
+        if sec.get("after"):
+            A(sec["after"])
+            A("")

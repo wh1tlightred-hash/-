@@ -1,0 +1,53 @@
+{
+  "explainers": {
+    "logistic": {
+      "explainer": "KernelExplainer(nsamples=400)",
+      "output_space": "predict_proba 概率"
+    },
+    "gnb": {
+      "explainer": "KernelExplainer(nsamples=400)",
+      "output_space": "predict_proba 概率"
+    },
+    "knn": {
+      "explainer": "KernelExplainer(nsamples=400)",
+      "output_space": "predict_proba 概率"
+    },
+    "svm": {
+      "explainer": "KernelExplainer(nsamples=400)",
+      "output_space": "decision_function 决策分数"
+    },
+    "random_forest": {
+      "explainer": "TreeExplainer(tree_path_dependent)",
+      "output_space": "predict_proba 概率"
+    },
+    "xgboost": {
+      "explainer": "TreeExplainer(tree_path_dependent)",
+      "output_space": "原始 margin（softmax 前的 log-odds，非概率）"
+    }
+  },
+  "refit_params": {
+    "logistic": {
+      "C": 0.01
+    },
+    "gnb": {
+      "var_smoothing": 1e-11
+    },
+    "knn": {
+      "n_neighbors": 3,
+      "p": 1,
+      "weights": "distance"
+    },
+    "svm": {
+      "C": 1.0,
+      "kernel": "linear"
+    },
+    "xgboost": {
+      "subsample": 1.0,
+      "reg_lambda": 1.0,
+      "n_estimators": 200,
+      "max_depth": 1,
+      "learning_rate": 0.1,
+      "colsample_bytree": 1.0
+    }
+  }
+}

@@ -14,11 +14,14 @@
  6. 从保存的 OOF 文件重算指标与报告汇总一致；混淆矩阵计数合计 27。
  7. 模型重载后预测一致；错误输入给出明确错误。
  8. 最小测试、完整主实验、报告图表均已实际执行与产出。
+ 9. 扩展分析：补充对比曲线、交叉验证方案对比/置换检验/学习与验证曲线/校准、
+    扩展 SHAP（折外、六模型对比）与 Word / 内嵌图片 HTML 报告均已产出且自洽。
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -299,6 +302,63 @@ def main() -> int:
         check(sel.get("n_samples") == 27 and len(sel.get("picked_per_fold", [])) == 5, 8,
               "含模型选择的估计覆盖 27 条样本、5 个外层折",
               f"n={sel.get('n_samples')}，折数={len(sel.get('picked_per_fold', []))}")
+
+    # ---------- 9. 扩展分析（第 5–7 章：对比曲线 / 交叉验证 / SHAP / 多格式报告）----------
+    fig_dir = results / "figures"
+    ext_figs = ["roc_tuned_vs_untuned", "roc_fold_bands", "class_model_comparison", "fold_metric_box",
+                "radar_metrics", "train_vs_oof_gap", "seed_stability",
+                "cv_schemes", "cv_repeated_box", "permutation_test", "learning_curves", "validation_curves",
+                "calibration",
+                "shap_beeswarm", "shap_dependence", "shap_waterfall", "shap_cv_stability", "shap_beeswarm_oof",
+                "shap_model_comparison"]
+    missing = [f for f in ext_figs if not (fig_dir / f"{f}.png").exists()]
+    check(not missing, 9, f"扩展图表齐备（{len(ext_figs)} 张）", f"缺 {missing}" if missing else "")
+
+    cv_dir = results / "cv_analysis"
+    if (cv_dir / "cv_schemes_summary.csv").exists():
+        cs = pd.read_csv(cv_dir / "cv_schemes_summary.csv")
+        sch = cfg["analysis"]["cv_schemes"]
+        n_sch = len(sch["kfold"]) + int(sch["loo"]) + 1
+        check(set(cs["model"]) == set(ALL_MODELS) and len(cs) == len(ALL_MODELS) * n_sch, 9,
+              "CV 方案对比覆盖 6 模型 + Dummy × 全部方案", f"{len(cs)} 行，{n_sch} 种方案")
+    else:
+        check(False, 9, "CV 方案对比结果已产出", "缺 cv_schemes_summary.csv")
+    if (cv_dir / "permutation_test.csv").exists():
+        pt = pd.read_csv(cv_dir / "permutation_test.csv")
+        n = int(pt["n_permutations"].iloc[0])
+        ok = set(pt["model"]) == set(REAL_MODELS) and pt["p_value"].between(1 / (n + 1) - 1e-12, 1).all()
+        check(bool(ok), 9, "置换检验覆盖 6 模型，p 值在 [1/(n+1), 1] 内", f"{n} 次置换")
+    else:
+        check(False, 9, "置换检验结果已产出", "缺 permutation_test.csv")
+    for rel in ("learning_curve.csv", "validation_curve.csv", "calibration.csv"):
+        check((cv_dir / rel).exists(), 9, f"交叉验证补充产物已产出：{rel}")
+
+    shap_dir = results / "shap"
+    if (shap_dir / "cv_shap_values.npz").exists():
+        v = np.load(shap_dir / "cv_shap_values.npz")["values"]
+        check(v.shape == (27, 10, 3) and bool(np.isfinite(v).all()), 9,
+              "折外 SHAP 覆盖 27 条样本 × 10 特征 × 3 类", str(v.shape))
+    else:
+        check(False, 9, "折外 SHAP 已产出", "缺 cv_shap_values.npz")
+    if (shap_dir / "multi_model_shap.csv").exists():
+        mm = pd.read_csv(shap_dir / "multi_model_shap.csv")
+        sums = mm.groupby("model")["share"].sum()
+        check(set(mm["model"]) == set(REAL_MODELS) and bool(np.allclose(sums, 1.0)), 9,
+              "六模型 SHAP 对比覆盖 6 模型，每模型占比和为 1")
+    else:
+        check(False, 9, "六模型 SHAP 对比已产出", "缺 multi_model_shap.csv")
+
+    rpt_docx = ROOT / cfg["report_dir"] / "实验报告.docx"
+    check(rpt_docx.exists() and rpt_docx.stat().st_size > 0, 9, "Word 版报告已生成",
+          f"{rpt_docx.stat().st_size // 1024} KB" if rpt_docx.exists() else "")
+    heads = [h for h in ("## 5 补充对比曲线", "## 6 交叉验证深入分析", "## 7 SHAP 可解释性深入分析")
+             if h not in txt]
+    check(not heads, 9, "报告包含第 5–7 章扩展分析", f"缺 {heads}" if heads else "")
+    if rpt_html.exists():
+        srcs = re.findall(r'<img[^>]*src="([^"]+)"', rpt_html.read_text(encoding="utf-8"))
+        bad = [s for s in srcs if not s.startswith("data:") and not (rpt_html.parent / s).resolve().exists()]
+        check(bool(srcs) and not bad, 9, "HTML 报告图片均可显示（内嵌或相对路径可解析）",
+              f"{len(srcs)} 张，其中 {sum(s.startswith('data:') for s in srcs)} 张内嵌")
 
     # ---------- 输出 ----------
     print("=" * 78)

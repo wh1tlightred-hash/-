@@ -9,24 +9,65 @@ import matplotlib.pyplot as plt
 
 from .metrics import interpolate_curve, pr_curves_per_class, roc_curves_per_class
 
-plt.rcParams.update({
+# 图表外观：浅色画布 + 细网格 + 中性墨色，与配色规范一致（见 MODEL_COLORS 注释）。
+INK = "#0b0b0b"
+INK_SECONDARY = "#52514e"
+INK_MUTED = "#898781"
+GRID_COLOR = "#e1e0d9"
+AXIS_COLOR = "#c3c2b7"
+SURFACE = "#fcfcfb"
+DIVERGING = ("#2a78d6", "#f0efec", "#e34948")  # 蓝 ↔ 灰 ↔ 红（SHAP 特征值着色）
+
+STYLE = {
     "font.sans-serif": ["Microsoft YaHei", "SimHei", "DejaVu Sans"],
     "axes.unicode_minus": False,
     "figure.dpi": 110,
     "savefig.dpi": 150,
     "savefig.bbox": "tight",
-})
-
-# 模型 → 颜色（统一使用，保证图表一致）
-MODEL_COLORS = {
-    "logistic": "#1f77b4",
-    "svm": "#ff7f0e",
-    "gnb": "#2ca02c",
-    "knn": "#d62728",
-    "random_forest": "#9467bd",
-    "xgboost": "#8c564b",
-    "dummy": "#7f7f7f",
+    "figure.facecolor": SURFACE,
+    "axes.facecolor": SURFACE,
+    "savefig.facecolor": SURFACE,
+    "axes.edgecolor": AXIS_COLOR,
+    "axes.labelcolor": INK_SECONDARY,
+    "axes.titlecolor": INK,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.grid": True,
+    "grid.color": GRID_COLOR,
+    "grid.linewidth": 0.6,
+    "axes.axisbelow": True,
+    "xtick.color": INK_MUTED,
+    "ytick.color": INK_MUTED,
+    "xtick.labelcolor": INK_SECONDARY,
+    "ytick.labelcolor": INK_SECONDARY,
+    "text.color": INK,
+    "legend.frameon": False,
+    "lines.linewidth": 2.0,
 }
+plt.rcParams.update(STYLE)
+
+# 模型 → 颜色（固定分配，颜色跟随模型而非名次）。
+# 色板经色觉缺陷（CVD）校验：相邻对 ΔE≥9.1、正常视觉 ΔE≥19.6；
+# 其中 3 个浅色槽位对画布对比度 <3:1，因此所有图都带图例，报告同时给出数值表。
+MODEL_COLORS = {
+    "logistic": "#2a78d6",
+    "gnb": "#eb6834",
+    "knn": "#1baf7a",
+    "svm": "#eda100",
+    "random_forest": "#e87ba4",
+    "xgboost": "#008300",
+    "dummy": "#898781",
+}
+
+# 风险类别 → 颜色（三色两两组合均通过 CVD 校验，可用于散点等全对比较场景）
+CLASS_COLORS = ["#2a78d6", "#eb6834", "#1baf7a"]
+
+# 顺序色（单一蓝色，浅→深）：混淆矩阵、重要性热力图等量值编码
+from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
+
+SEQ_CMAP = LinearSegmentedColormap.from_list(
+    "seq_blue", ["#f0efec", "#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"])
+DIV_CMAP = LinearSegmentedColormap.from_list("div_blue_red", list(DIVERGING))
 
 _GRID = np.linspace(0.0, 1.0, 201)
 
@@ -34,7 +75,7 @@ _GRID = np.linspace(0.0, 1.0, 201)
 def plot_class_counts(y: np.ndarray, class_names: list[str], outpath: str):
     counts = [int((np.asarray(y) == c).sum()) for c in range(3)]
     fig, ax = plt.subplots(figsize=(5.5, 3.6))
-    bars = ax.bar(class_names, counts, color=[MODEL_COLORS["gnb"], MODEL_COLORS["svm"], MODEL_COLORS["knn"]])
+    bars = ax.bar(class_names, counts, color=CLASS_COLORS, width=0.6)
     ax.set_title("类别样本数（共 27 条）")
     ax.set_ylabel("样本数")
     for b, c in zip(bars, counts):
@@ -78,7 +119,7 @@ def plot_model_metrics_bar(oof_metrics, class_names: list[str], outpath: str, me
                 row = oof_metrics[(oof_metrics["model"] == m) & (oof_metrics["version"] == version)]
                 vals.append(row[key].iloc[0] if len(row) else np.nan)
             ax.bar(x + (vi - 0.5) * w, vals, w, label="未调参" if version == "untuned" else "调参",
-                   color="#9ecae1" if version == "untuned" else "#3182bd")
+                   color="#86b6ef" if version == "untuned" else "#1c5cab")
         # Dummy 基线虚线
         dummy = oof_metrics[oof_metrics["model"] == "dummy"]
         if len(dummy):
@@ -116,7 +157,7 @@ def plot_uncertainty(ci_table, outpath: str, metrics=("accuracy", "f1_macro"), b
         hi = sub["ci_hi"].to_numpy(dtype=float)
         err = np.vstack([point - lo, hi - point])
         err = np.nan_to_num(err, nan=0.0)
-        ax.errorbar(point, y, xerr=err, fmt="o", color="#3182bd", ecolor="#9ecae1",
+        ax.errorbar(point, y, xerr=err, fmt="o", color="#1c5cab", ecolor="#86b6ef",
                     elinewidth=2, capsize=4, markersize=6)
         if baseline is not None and metric in baseline:
             ax.axvline(float(baseline[metric]), ls="--", color=MODEL_COLORS["dummy"], lw=1.2,
@@ -175,7 +216,7 @@ def plot_macro_roc_comparison(oof, metric_by_model: dict, outpath: str):
         auc_val = metric_by_model.get(m, np.nan)
         ax.plot(fpr, tpr, color=MODEL_COLORS[m], lw=1.8,
                 label=f"{lab} (macro-AUC={auc_val:.3f})")
-    ax.plot([0, 1], [0, 1], ls="--", color="gray", lw=1, label="随机")
+    ax.plot([0, 1], [0, 1], ls="--", color=AXIS_COLOR, lw=1, label="随机")
     ax.set_xlabel("假阳性率 FPR")
     ax.set_ylabel("真阳性率 TPR")
     ax.set_title("六模型 macro ROC 对比（跨折拼接 OOF；图例 macro-AUC 为逐类 AUC 平均）")
@@ -226,10 +267,10 @@ def plot_per_class_curves(model_label: str, y_true, y_score, class_names: list[s
     pr = pr_curves_per_class(y_true, y_score)
     for c in range(3):
         fpr, tpr = roc[c]
-        axes[0].plot(fpr, tpr, lw=1.8, label=f"{class_names[c]} (class {c})")
+        axes[0].plot(fpr, tpr, color=CLASS_COLORS[c], label=f"{class_names[c]} (class {c})")
         precision, recall = pr[c]
-        axes[1].plot(recall, precision, lw=1.8, label=f"{class_names[c]} (class {c})")
-    axes[0].plot([0, 1], [0, 1], ls="--", color="gray", lw=1)
+        axes[1].plot(recall, precision, color=CLASS_COLORS[c], label=f"{class_names[c]} (class {c})")
+    axes[0].plot([0, 1], [0, 1], ls="--", color=AXIS_COLOR, lw=1)
     axes[0].set_xlabel("FPR")
     axes[0].set_ylabel("TPR")
     axes[0].set_title("逐类 OvR ROC")
@@ -260,7 +301,7 @@ def plot_confusion_matrix(cm: np.ndarray, class_names: list[str], outpath: str, 
         fmt = ".0f"
         cbarlabel = "样本数"
     fig, ax = plt.subplots(figsize=(5, 4.6))
-    im = ax.imshow(display, cmap="Blues", vmin=0, vmax=(1 if normalize else display.max()))
+    im = ax.imshow(display, cmap=SEQ_CMAP, vmin=0, vmax=(1 if normalize else display.max()))
     ax.set_xticks(np.arange(3))
     ax.set_yticks(np.arange(3))
     ax.set_xticklabels(class_names)
@@ -268,6 +309,7 @@ def plot_confusion_matrix(cm: np.ndarray, class_names: list[str], outpath: str, 
     ax.set_xlabel("预测类别")
     ax.set_ylabel("真实类别")
     ax.set_title(title or ("混淆矩阵" + ("（行归一化）" if normalize else "")))
+    ax.grid(False)
     thresh = display.max() / 2
     for i in range(3):
         for j in range(3):
